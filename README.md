@@ -1,19 +1,12 @@
-# 개인용 로또 분석기
+# 행운로또 PWA
 
-## 설치 방법
+아이폰 모바일 화면에 맞춘 HTML/CSS/JavaScript 웹앱입니다.
 
-```bash
-pip install -r requirements.txt
-```
+## 파일
+- index.html
+- style.css
+- app.js
+- manifest.json
 
-## 실행 방법
-
-```bash
-streamlit run app.py
-```
-
-실행 후 브라우저에서:
-
-http://localhost:8501
-
-접속하면 됩니다.
+## 배포
+GitHub Pages에 업로드 후 Pages를 활성화하면 됩니다.
