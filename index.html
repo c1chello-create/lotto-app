@@ -1,135 +1,130 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#062b63" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>행운로또 🍀</title>
-  <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="app">
-    <header class="top">
-      <div class="status">
-        <span>9:41</span>
-        <span>▮▮▮  Wi‑Fi  100</span>
+<div class="app">
+  <header class="top">
+    <div class="status"><span>9:41</span><span>▮▮▮ Wi‑Fi 100</span></div>
+    <div class="topbar">
+      <button class="icon">☰</button>
+      <div class="logo">행운로또 🍀</div>
+      <div><button class="icon">☆</button><button class="icon">⚙</button></div>
+    </div>
+    <nav class="tabs">
+      <button class="tab active" data-page="home">회차별 조회</button>
+      <button class="tab" data-page="stats">번호 분석</button>
+      <button class="tab" data-page="recommend">번호 추천</button>
+      <button class="tab" data-page="match">적중 분석</button>
+      <button class="tab" data-page="dream">꿈해몽</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="home" class="page active">
+      <div id="statusBox" class="card center">데이터를 불러오는 중입니다...</div>
+      <div class="legend">
+        <span><i class="dot y"></i>1~9</span>
+        <span><i class="dot b"></i>10~19</span>
+        <span><i class="dot r"></i>20~29</span>
+        <span><i class="dot k"></i>30~39</span>
+        <span><i class="dot g"></i>40~45</span>
       </div>
-      <div class="topbar">
-        <button class="icon">☰</button>
-        <div class="logo">행운로또 🍀</div>
-        <div>
-          <button class="icon">☆</button>
-          <button class="icon">⚙</button>
+      <div class="searchbar">
+        <span>🔍</span>
+        <input id="roundInput" type="number" placeholder="회차 입력">
+        <button id="searchBtn">조회</button>
+      </div>
+      <div class="table-head">
+        <span>회차</span><span>추첨일</span><span>당첨번호</span><span>보너스</span>
+      </div>
+      <div id="recentList"></div>
+      <button id="moreBtn" class="more-btn">더 보기</button>
+
+      <div class="card">
+        <div class="my-head">
+          <div>
+            <b>내 예상번호 ✎</b>
+            <p>내가 선택한 번호로 통계와 분석을 확인하세요!</p>
+          </div>
+          <button id="detailBtn">상세 분석</button>
+        </div>
+        <div id="myNumbers" class="balls"></div>
+        <div class="mini-metrics">
+          <div><b id="appearCount">-</b><span>출현 횟수</span></div>
+          <div><b id="recentAppear">-</b><span>최근 출현</span></div>
+          <div><b id="missGap">-</b><span>미출현 기간</span></div>
+          <div><b>균형형</b><span>구간 분포</span></div>
         </div>
       </div>
-      <nav class="tabs">
-        <button class="tab active" data-page="round">회차별 조회</button>
-        <button class="tab" data-page="stats">번호 분석</button>
-        <button class="tab" data-page="recommend">번호 추천</button>
-        <button class="tab" data-page="match">적중 분석</button>
-        <button class="tab" data-page="dream">꿈해몽</button>
-      </nav>
-    </header>
+    </section>
 
-    <main>
-      <section id="page-round" class="page active">
-        <div id="latestCard" class="card center loading">최신 회차 데이터를 불러오는 중...</div>
+    <section id="stats" class="page">
+      <h2>번호 분석</h2>
+      <div class="card">
+        <h3>자주 나온 번호 TOP 10</h3>
+        <div id="hotBalls" class="balls"></div>
+        <div id="hotList" class="rank-list"></div>
+      </div>
+      <div class="card">
+        <h3>적게 나온 번호 TOP 10</h3>
+        <div id="coldBalls" class="balls"></div>
+        <div id="coldList" class="rank-list"></div>
+      </div>
+      <div class="card">
+        <h3>홀짝 분석</h3>
+        <div id="ratioBox" class="rank-list"></div>
+      </div>
+    </section>
 
-        <div class="legend">
-          <span><i class="dot y"></i>1~9</span>
-          <span><i class="dot b"></i>10~19</span>
-          <span><i class="dot r"></i>20~29</span>
-          <span><i class="dot k"></i>30~39</span>
-          <span><i class="dot g"></i>40~45</span>
+    <section id="recommend" class="page">
+      <h2>번호 추천</h2>
+      <div class="card center">
+        <h3>추천번호</h3>
+        <div id="recommendBalls" class="balls big"></div>
+        <div class="btn-row">
+          <button id="statRecommend">통계 추천</button>
+          <button id="balanceRecommend">균형 추천</button>
+          <button id="randomRecommend">랜덤 추천</button>
         </div>
+        <p class="note">전체 회차 데이터 기반 개인용 참고 분석입니다.</p>
+      </div>
+    </section>
 
-        <div class="searchbar">
-          <span>🔍</span>
-          <input id="roundInput" type="number" placeholder="회차 입력" />
-          <button id="roundSearch">조회</button>
-        </div>
+    <section id="match" class="page">
+      <h2>적중 분석</h2>
+      <div class="card">
+        <label>예상번호 6개</label>
+        <input id="matchInput" class="full-input" value="5 14 23 33 42 9">
+        <button id="matchBtn" class="full-btn">분석하기</button>
+        <div id="matchBalls" class="balls"></div>
+      </div>
+      <div id="matchResult"></div>
+    </section>
 
-        <div class="table-head">
-          <span>회차</span><span>추첨일</span><span>당첨번호</span><span>보너스</span>
-        </div>
-        <div id="recentList" class="list"></div>
+    <section id="dream" class="page">
+      <h2>꿈해몽</h2>
+      <div class="card">
+        <label>꿈 키워드</label>
+        <input id="dreamInput" class="full-input" placeholder="예: 돼지, 물, 스케이트, 죽">
+        <button id="dreamBtn" class="full-btn">꿈해몽 번호 추천</button>
+        <div id="dreamResult"></div>
+      </div>
+    </section>
+  </main>
 
-        <div class="card my-card">
-          <div class="my-head">
-            <div>
-              <b>내 예상번호</b> ✎
-              <p>내가 선택한 번호로 통계와 분석을 확인하세요!</p>
-            </div>
-            <button id="goMatch">상세 분석</button>
-          </div>
-          <div id="myNumbers" class="balls"></div>
-          <div class="mini-metrics">
-            <div><b id="appearCount">-</b><span>출현 횟수</span></div>
-            <div><b id="recentAppear">-</b><span>최근 출현</span></div>
-            <div><b id="missGap">-</b><span>미출현 기간</span></div>
-            <div><b>균형형</b><span>구간 분포</span></div>
-          </div>
-        </div>
-      </section>
-
-      <section id="page-stats" class="page">
-        <h2>번호 분석</h2>
-        <div class="card">
-          <h3>자주 나온 번호 TOP 10</h3>
-          <div id="hotNumbers" class="balls"></div>
-          <div id="hotList" class="rank-list"></div>
-        </div>
-        <div class="card">
-          <h3>최근 적게 나온 번호 TOP 10</h3>
-          <div id="coldNumbers" class="balls"></div>
-        </div>
-      </section>
-
-      <section id="page-recommend" class="page">
-        <h2>번호 추천</h2>
-        <div class="card center">
-          <h3>추천번호</h3>
-          <div id="recommendBalls" class="balls big"></div>
-          <div class="btn-row">
-            <button id="statRecommend">통계 추천</button>
-            <button id="randomRecommend">랜덤 추천</button>
-          </div>
-          <p class="note">당첨을 보장하지 않는 개인용 참고 분석입니다.</p>
-        </div>
-      </section>
-
-      <section id="page-match" class="page">
-        <h2>적중 분석</h2>
-        <div class="card">
-          <label>예상번호 6개</label>
-          <input id="matchInput" class="full-input" value="5 14 23 33 42 9" />
-          <button id="matchBtn" class="full-btn">분석하기</button>
-          <div id="matchBalls" class="balls"></div>
-        </div>
-        <div id="matchResult"></div>
-      </section>
-
-      <section id="page-dream" class="page">
-        <h2>꿈해몽</h2>
-        <div class="card">
-          <label>꿈 키워드</label>
-          <input id="dreamInput" class="full-input" placeholder="예: 돼지, 물, 스케이트, 죽" />
-          <button id="dreamBtn" class="full-btn">꿈해몽 번호 추천</button>
-          <div id="dreamResult"></div>
-        </div>
-      </section>
-    </main>
-
-    <footer class="bottom">
-      <button class="bottom-btn active" data-page="round">🏠<span>홈</span></button>
-      <button class="bottom-btn" data-page="stats">📈<span>통계</span></button>
-      <button class="bottom-btn" data-page="dream">✎<span>꿈해몽 등록</span></button>
-      <button class="bottom-btn" data-page="match">🔖<span>즐겨찾기</span></button>
-      <button class="bottom-btn" data-page="recommend">⋯<span>더보기</span></button>
-    </footer>
-  </div>
-
-  <script src="app.js"></script>
+  <footer class="bottom">
+    <button class="bottom-btn active" data-page="home">🏠<span>홈</span></button>
+    <button class="bottom-btn" data-page="stats">📈<span>통계</span></button>
+    <button class="bottom-btn" data-page="dream">✎<span>꿈해몽</span></button>
+    <button class="bottom-btn" data-page="match">🔖<span>적중</span></button>
+    <button class="bottom-btn" data-page="recommend">⋯<span>추천</span></button>
+  </footer>
+</div>
+<script src="app.js?v=20260612fix"></script>
 </body>
 </html>
