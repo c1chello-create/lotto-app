@@ -1,87 +1,64 @@
 import json
-import time
 from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
-BASE = "https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo="
+# 전체회차 데이터를 한 번에 받아서 우리 앱 형식(data/lotto.json)으로 변환합니다.
+SOURCE_URL = "https://smok95.github.io/lotto/results/all.json"
 DATA_PATH = Path("data/lotto.json")
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0",
-    "Accept": "application/json,text/plain,*/*",
-    "Referer": "https://www.dhlottery.co.kr/"
+    "Accept": "application/json,text/plain,*/*"
 }
 
-# 전체 회차 재생성용 코드입니다.
-# 기존 data/lotto.json 내용은 사용하지 않고 1회부터 다시 생성합니다.
-
-def fetch(round_no: int):
-    try:
-        req = Request(BASE + str(round_no), headers=HEADERS)
-        with urlopen(req, timeout=25) as r:
-            raw = r.read().decode("utf-8", errors="ignore").strip()
-
-        if not raw.startswith("{"):
-            print(f"skip round {round_no}: non-json response")
-            return None
-
-        data = json.loads(raw)
-
-        if data.get("returnValue") != "success":
-            print(f"round {round_no}: not available")
-            return None
-
-        return {
-            "round": round_no,
-            "date": data.get("drwNoDate", ""),
-            "numbers": [data[f"drwtNo{i}"] for i in range(1, 7)],
-            "bonus": data["bnusNo"]
-        }
-
-    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError, KeyError, ValueError) as e:
-        print(f"skip round {round_no}: {e}")
-        return None
-
+def normalize_date(value):
+    if not value:
+        return ""
+    return str(value)[:10]
 
 def main():
     DATA_PATH.parent.mkdir(exist_ok=True)
 
+    print("download all lotto data...", flush=True)
+
+    try:
+        req = Request(SOURCE_URL, headers=HEADERS)
+        with urlopen(req, timeout=30) as r:
+            raw = r.read().decode("utf-8", errors="ignore")
+    except (HTTPError, URLError, TimeoutError) as e:
+        raise RuntimeError(f"전체 데이터 다운로드 실패: {e}")
+
+    source = json.loads(raw)
+
+    if not isinstance(source, list):
+        raise RuntimeError("전체 데이터 형식이 배열이 아닙니다.")
+
     rows = []
-    empty_count = 0
 
-    # 현재 1200회 이후까지 충분히 확인합니다.
-    # 공개되지 않은 회차가 10번 연속 나오면 종료합니다.
-    for r in range(1, 1300):
-        item = fetch(r)
+    for item in source:
+        try:
+            rows.append({
+                "round": int(item["draw_no"]),
+                "date": normalize_date(item.get("date", "")),
+                "numbers": [int(n) for n in item["numbers"]],
+                "bonus": int(item["bonus_no"])
+            })
+        except Exception as e:
+            print(f"skip item: {e}", flush=True)
 
-        if item:
-            rows.append(item)
-            empty_count = 0
+    rows.sort(key=lambda x: x["round"])
 
-            if r % 50 == 0:
-                print(f"fetched {r} rounds")
-        else:
-            if r > 1200:
-                empty_count += 1
-                if empty_count >= 10:
-                    print("no more available rounds, stop")
-                    break
-
-        time.sleep(0.15)
-
-    rows.sort(key=lambda x: int(x["round"]))
+    if len(rows) < 1000:
+        raise RuntimeError(f"전체 회차 수가 너무 적습니다: {len(rows)}")
 
     DATA_PATH.write_text(
         json.dumps(rows, ensure_ascii=False, indent=2),
         encoding="utf-8"
     )
 
-    print(f"saved {len(rows)} rounds to data/lotto.json")
-
-    if len(rows) < 1000:
-        raise RuntimeError("전체 회차 생성 실패: 저장된 회차 수가 너무 적습니다.")
-
+    print(f"saved {len(rows)} rounds to data/lotto.json", flush=True)
+    print(f"latest round: {rows[-1]['round']}", flush=True)
 
 if __name__ == "__main__":
     main()
