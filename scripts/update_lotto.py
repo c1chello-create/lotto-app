@@ -13,10 +13,13 @@ HEADERS = {
     "Referer": "https://www.dhlottery.co.kr/"
 }
 
+# 전체 회차 재생성용 코드입니다.
+# 기존 data/lotto.json 내용은 사용하지 않고 1회부터 다시 생성합니다.
+
 def fetch(round_no: int):
     try:
         req = Request(BASE + str(round_no), headers=HEADERS)
-        with urlopen(req, timeout=20) as r:
+        with urlopen(req, timeout=25) as r:
             raw = r.read().decode("utf-8", errors="ignore").strip()
 
         if not raw.startswith("{"):
@@ -26,7 +29,7 @@ def fetch(round_no: int):
         data = json.loads(raw)
 
         if data.get("returnValue") != "success":
-            print(f"round {round_no}: not available yet")
+            print(f"round {round_no}: not available")
             return None
 
         return {
@@ -41,68 +44,31 @@ def fetch(round_no: int):
         return None
 
 
-def load_existing():
-    if not DATA_PATH.exists():
-        return []
-
-    try:
-        rows = json.loads(DATA_PATH.read_text(encoding="utf-8"))
-        if not isinstance(rows, list):
-            return []
-
-        valid = []
-        for row in rows:
-            if (
-                isinstance(row, dict)
-                and "round" in row
-                and "date" in row
-                and "numbers" in row
-                and "bonus" in row
-            ):
-                valid.append(row)
-
-        return valid
-
-    except Exception as e:
-        print(f"existing lotto.json read failed: {e}")
-        return []
-
-
 def main():
     DATA_PATH.parent.mkdir(exist_ok=True)
 
-    rows = load_existing()
-    existing_rounds = {int(row["round"]) for row in rows if "round" in row}
-    current_max = max(existing_rounds) if existing_rounds else 0
+    rows = []
+    empty_count = 0
 
-    print(f"existing rounds: {len(existing_rounds)}")
-    print(f"current max round: {current_max}")
-
-    start = current_max + 1
-    end = current_max + 40
-
-    print(f"checking new rounds: {start} ~ {end}")
-
-    added = 0
-    consecutive_empty = 0
-
-    for r in range(start, end + 1):
+    # 현재 1200회 이후까지 충분히 확인합니다.
+    # 공개되지 않은 회차가 10번 연속 나오면 종료합니다.
+    for r in range(1, 1300):
         item = fetch(r)
 
         if item:
-            if int(item["round"]) not in existing_rounds:
-                rows.append(item)
-                existing_rounds.add(int(item["round"]))
-                added += 1
-                consecutive_empty = 0
-                print(f"added round {r}")
-        else:
-            consecutive_empty += 1
-            if consecutive_empty >= 5:
-                print("no more available rounds, stop")
-                break
+            rows.append(item)
+            empty_count = 0
 
-        time.sleep(0.5)
+            if r % 50 == 0:
+                print(f"fetched {r} rounds")
+        else:
+            if r > 1200:
+                empty_count += 1
+                if empty_count >= 10:
+                    print("no more available rounds, stop")
+                    break
+
+        time.sleep(0.15)
 
     rows.sort(key=lambda x: int(x["round"]))
 
@@ -112,7 +78,9 @@ def main():
     )
 
     print(f"saved {len(rows)} rounds to data/lotto.json")
-    print(f"added {added} new rounds")
+
+    if len(rows) < 1000:
+        raise RuntimeError("전체 회차 생성 실패: 저장된 회차 수가 너무 적습니다.")
 
 
 if __name__ == "__main__":
