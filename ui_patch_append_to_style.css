@@ -1,0 +1,88 @@
+/* === 행운로또 UI 패치: 번호볼 30% 확대 + 날짜 중복 제거 === */
+
+/* 번호볼 30% 확대 */
+.ball{
+  width:50px!important;
+  height:50px!important;
+  font-size:22px!important;
+}
+
+.small-ball{
+  width:33px!important;
+  height:33px!important;
+  font-size:15px!important;
+}
+
+.tiny-ball{
+  width:30px!important;
+  height:30px!important;
+  font-size:14px!important;
+}
+
+/* 예상번호 선택 영역 확대 */
+.pick-slot{
+  width:60px!important;
+  height:60px!important;
+}
+
+.pick-slot .ball{
+  width:54px!important;
+  height:54px!important;
+  font-size:24px!important;
+}
+
+/* 선택 번호 강조 효과 */
+.pick-slot.active{
+  border:3px solid #ffdc64!important;
+  background:#fff8db!important;
+  transform:scale(1.08);
+  transition:.18s ease;
+}
+
+.selected-ball{
+  transform:scale(1.15);
+  transition:.18s ease;
+  outline:4px solid rgba(255,217,90,.78)!important;
+  outline-offset:2px!important;
+}
+
+/* 적중분석 회차표: 별도 추첨일 칸 제거, 회차 아래 날짜만 유지 */
+.history-table-head,
+.history-row{
+  grid-template-columns:86px 1fr 58px 50px!important;
+}
+
+.history-table-head span:nth-child(2),
+.history-row > div:nth-child(2){
+  display:none!important;
+}
+
+.history-balls{
+  gap:6px!important;
+}
+
+.round-cell b{
+  font-size:16px!important;
+}
+
+.round-cell span{
+  font-size:13px!important;
+}
+
+/* 홈 최근회차 표도 날짜 중복 줄이기 */
+.table-head,
+.row{
+  grid-template-columns:78px 1fr 58px!important;
+}
+
+.table-head span:nth-child(2),
+.row > div:nth-child(2){
+  display:none!important;
+}
+
+.row .nums{
+  display:flex;
+  gap:5px;
+  align-items:center;
+  flex-wrap:nowrap;
+}
