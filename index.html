@@ -8,7 +8,7 @@
 </head>
 <body>
 <div class="app">
-  <header class="top">
+  <header class="top" id="mainHeader">
     <div class="status"><span>9:41</span><span>▮▮▮ Wi‑Fi 100</span></div>
     <div class="topbar">
       <button class="icon">☰</button>
@@ -21,6 +21,21 @@
       <button class="tab" data-page="recommend">번호 추천</button>
       <button class="tab" data-page="match">적중 분석</button>
       <button class="tab" data-page="dream">꿈해몽</button>
+    </nav>
+  </header>
+
+  <header class="detail-top hidden" id="detailHeader">
+    <div class="status"><span>9:41</span><span>▮▮▮ Wi‑Fi 100</span></div>
+    <div class="detail-titlebar">
+      <button class="back-btn" id="backHome">‹</button>
+      <div>내 예상번호 상세 분석</div>
+      <button class="help-btn">?</button>
+    </div>
+    <nav class="detail-tabs">
+      <button>번호 입력</button>
+      <button class="active">상세 분석</button>
+      <button>조합 분석</button>
+      <button>그래프 분석</button>
     </nav>
   </header>
 
@@ -95,15 +110,33 @@
       </div>
     </section>
 
-    <section id="match" class="page">
-      <h2>적중 분석</h2>
-      <div class="card">
-        <label>예상번호 6개</label>
-        <input id="matchInput" class="full-input" value="5 14 23 33 42 9">
-        <button id="matchBtn" class="full-btn">분석하기</button>
-        <div id="matchBalls" class="balls"></div>
+    <section id="match" class="page detail-page">
+      <div class="detail-card">
+        <div class="detail-section-title">
+          <b>내 예상번호 (6개)</b>
+          <button class="folder-btn">▱ 예상번호 불러오기</button>
+        </div>
+        <div class="pick-row" id="pickRow"></div>
+        <p class="guide">번호를 하나씩 입력하여 회차별 출현 이력을 확인하세요.</p>
+        <label class="checkline"><input type="checkbox" id="includeBonus" checked> 보너스 번호 포함 <span>ⓘ</span></label>
       </div>
-      <div id="matchResult"></div>
+
+      <div id="numberSummary"></div>
+
+      <div class="history-head">
+        <b>회차별 출현 이력</b>
+        <div>
+          <button class="filter active" data-range="50">최근 50회</button>
+          <button class="filter" data-range="100">최근 100회</button>
+          <button class="filter" data-range="all">전체 회차</button>
+        </div>
+      </div>
+
+      <div class="history-table-head">
+        <span>회차</span><span>추첨일</span><span>당첨번호</span><span>보너스</span><span></span>
+      </div>
+      <div id="matchHistory"></div>
+      <p class="small-note">* 번호를 선택하면 해당 번호의 출현 이력을 확인할 수 있습니다.</p>
     </section>
 
     <section id="dream" class="page">
@@ -117,7 +150,7 @@
     </section>
   </main>
 
-  <footer class="bottom">
+  <footer class="bottom" id="bottomNav">
     <button class="bottom-btn active" data-page="home">🏠<span>홈</span></button>
     <button class="bottom-btn" data-page="stats">📈<span>통계</span></button>
     <button class="bottom-btn" data-page="dream">✎<span>꿈해몽</span></button>
@@ -125,6 +158,6 @@
     <button class="bottom-btn" data-page="recommend">⋯<span>추천</span></button>
   </footer>
 </div>
-<script src="app.js?v=20260612fix"></script>
+<script src="app.js?v=match-detail-v2"></script>
 </body>
 </html>
