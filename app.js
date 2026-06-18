@@ -1,10 +1,60 @@
 let lottoData = [];
 let shownCount = 5;
-let myNums = [5, 14, 23, 33, 42, 9];
-let selectedNums = [5];
+let myNums = loadMyNums();
+let selectedNums = [myNums[0]];
 let matchRange = 50;
 
 const $ = id => document.getElementById(id);
+
+function loadMyNums(){
+  try{
+    const saved = JSON.parse(localStorage.getItem("haengun_my_nums") || "null");
+    if(Array.isArray(saved) && saved.length === 6 && saved.every(n => Number.isInteger(n) && n>=1 && n<=45)){
+      return saved;
+    }
+  }catch(e){}
+  return [5,14,23,33,42,9];
+}
+
+function saveMyNums(){
+  localStorage.setItem("haengun_my_nums", JSON.stringify(myNums));
+}
+
+function setMyNumbers(){
+  const current = myNums.join(" ");
+  const input = prompt("예상번호 6개를 입력하세요.\\n예: 5 14 23 33 42 9", current);
+  if(input === null) return;
+
+  const nums = input
+    .split(/[\s,]+/)
+    .map(v => Number(v.trim()))
+    .filter(v => Number.isInteger(v));
+
+  if(nums.length !== 6){
+    alert("번호는 6개를 입력해야 합니다.");
+    return;
+  }
+
+  const unique = [...new Set(nums)];
+  if(unique.length !== 6){
+    alert("중복 번호는 사용할 수 없습니다.");
+    return;
+  }
+
+  if(unique.some(n => n < 1 || n > 45)){
+    alert("번호는 1부터 45 사이만 가능합니다.");
+    return;
+  }
+
+  myNums = unique.sort((a,b)=>a-b);
+  selectedNums = [myNums[0]];
+  saveMyNums();
+
+  renderMyCard();
+  renderMatchDetail();
+
+  alert("예상번호가 저장되었습니다.");
+}
 
 function injectComboStyle(){
   const css = `
@@ -13,6 +63,7 @@ function injectComboStyle(){
   .combo-desc{font-size:13px;color:#667085;margin:6px 0 0}
   .history-row.combo-hit{background:#fffdf5}
   .hit-combo{background:#ffe8a3;color:#8a5b00}
+  .folder-btn{cursor:pointer}
   `;
   const st = document.createElement("style");
   st.textContent = css;
@@ -98,9 +149,9 @@ function renderRecent(){
 }
 
 function renderMyCard(){
-  if(!$("myNumbers")) return;
-
-  $("myNumbers").innerHTML = myNums.map(n => ball(n)).join("");
+  if($("myNumbers")){
+    $("myNumbers").innerHTML = myNums.map(n => ball(n)).join("");
+  }
 
   const all = lottoData.flatMap(x => x.numbers || []);
   const count = myNums.reduce((s,n) => s + all.filter(v => v === n).length, 0);
@@ -220,7 +271,6 @@ function showPage(p){
   if(detail) renderMatchDetail();
 }
 
-/* 핵심 추가 기능: 1개~6개 조합 선택 */
 function toggleNumber(n){
   if(selectedNums.includes(n)){
     if(selectedNums.length > 1){
@@ -241,10 +291,6 @@ function renderPickRow(){
     const active = selectedNums.includes(n);
     return `<button class="pick-slot ${active ? "active" : ""}" onclick="toggleNumber(${n})">${ball(n,false,active ? "selected-ball" : "")}</button>`;
   }).join("");
-
-  while((html.match(/pick-slot/g) || []).length < 6){
-    html += `<div class="pick-slot pick-plus">+</div>`;
-  }
 
   $("pickRow").innerHTML = html;
 }
@@ -373,6 +419,10 @@ function bindEvents(){
   });
 
   if($("includeBonus")) $("includeBonus").onchange = () => renderMatchDetail();
+
+  document.querySelectorAll(".folder-btn").forEach(btn => {
+    btn.onclick = setMyNumbers;
+  });
 }
 
 injectComboStyle();
