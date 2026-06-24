@@ -348,38 +348,155 @@ function renderStructureReport(nums){
 
 function renderCompanion(){const data=companionAnalysis(),max=data.top.length?data.top[0].count:1,threshold=minHit();let html=`<div class="combo-card"><b>🤝 동반번호 추천</b><p class="combo-guide">${selectedNums.map(n=>n+'번').join(', ')} 기준으로, ${threshold}개 이상 함께 나온 회차에서 추가 번호를 집계했습니다.</p>`;if(data.recommend.length){html+=`<div class="combo-card" style="margin:10px 0;background:#f0f7ff"><b>AI 추천 동반번호</b><div class="combo-selected">${data.recommend.map(n=>ball(n,true)).join('')}</div><p class="combo-guide">동반번호는 아래 AI 조합 랭킹에 반영됩니다.</p></div>`;html+=renderRankedCombos(data)}else{html+=`<p class="combo-guide">현재 범위에서는 추천할 동반번호가 없습니다. 전체 회차로 바꿔보세요.</p>`}html+=data.top.length?data.top.slice(0,10).map(x=>{const w=Math.max(8,Math.round(x.count/max*100));return`<div class="companion-row"><div>${ball(x.n,true)}</div><div class="companion-bar"><i style="width:${w}%"></i></div><div class="companion-count">${x.count}회 · 지수 ${x.index}</div></div>`}).join(''):`<div class="combo-guide">동반출현 기록이 없습니다.</div>`;html+=`<p class="combo-guide">분석 기준: 조건을 만족한 ${data.rows.length}개 회차에서 추가 번호를 집계했습니다.</p></div>`;$('companion').innerHTML=html}
 
+
+
 function injectHistoryWideStyle(){
   if(document.getElementById("historyWideStyle"))return;
   const st=document.createElement("style");
   st.id="historyWideStyle";
   st.textContent=`
+    .history-head-wide,
+    .combo-table-head.history-head-wide,
+    .history-table-head.history-head-wide{
+      display:grid !important;
+      grid-template-columns:78px minmax(0,1fr) 48px 54px !important;
+      gap:6px !important;
+      align-items:center !important;
+    }
+
     .combo-row.history-wide{
-      grid-template-columns:90px minmax(0,1fr) 52px 58px !important;
-      gap:8px !important;
-      align-items:center;
+      display:grid !important;
+      grid-template-columns:78px minmax(0,1fr) 48px 54px !important;
+      gap:6px !important;
+      align-items:center !important;
+      min-height:58px !important;
+      padding:9px 10px !important;
+      overflow:visible !important;
     }
+
+    .combo-row.history-wide .round-cell{
+      min-width:0 !important;
+      line-height:1.18 !important;
+    }
+
+    .combo-row.history-wide .round-cell b{
+      display:block !important;
+      font-size:16px !important;
+      white-space:nowrap !important;
+    }
+
+    .combo-row.history-wide .round-cell span{
+      display:block !important;
+      font-size:12px !important;
+      white-space:normal !important;
+      word-break:keep-all !important;
+    }
+
     .combo-row.history-wide .history-balls{
-      min-width:0;
-      display:flex;
-      flex-wrap:wrap;
-      gap:4px;
-      justify-content:flex-start;
-      align-items:center;
+      min-width:0 !important;
+      width:100% !important;
+      display:flex !important;
+      flex-direction:row !important;
+      flex-wrap:nowrap !important;
+      gap:3px !important;
+      justify-content:flex-start !important;
+      align-items:center !important;
+      overflow:visible !important;
     }
+
+    .combo-row.history-wide .history-balls .ball,
+    .combo-row.history-wide .history-balls .tiny-ball,
+    .combo-row.history-wide .history-balls span{
+      flex:0 0 auto !important;
+      display:inline-flex !important;
+    }
+
+    .combo-row.history-wide .hit-tag{
+      font-size:12px !important;
+      padding:5px 6px !important;
+      white-space:nowrap !important;
+    }
+
     @media(max-width:430px){
-      .combo-row.history-wide{
-        grid-template-columns:74px minmax(0,1fr) 42px 48px !important;
-        gap:5px !important;
+      .history-head-wide,
+      .combo-table-head.history-head-wide,
+      .history-table-head.history-head-wide{
+        grid-template-columns:68px minmax(0,1fr) 34px 44px !important;
+        gap:3px !important;
       }
-      .combo-row.history-wide .round-cell b{font-size:16px}
-      .combo-row.history-wide .round-cell span{font-size:13px}
-      .combo-row.history-wide .hit-tag{font-size:12px;padding:5px 7px}
+
+      .combo-row.history-wide{
+        grid-template-columns:68px minmax(0,1fr) 34px 44px !important;
+        gap:3px !important;
+        min-height:56px !important;
+        padding:8px 7px !important;
+      }
+
+      .combo-row.history-wide .round-cell b{
+        font-size:15px !important;
+      }
+
+      .combo-row.history-wide .round-cell span{
+        font-size:11px !important;
+      }
+
+      .combo-row.history-wide .history-balls{
+        gap:2px !important;
+      }
+
+      .combo-row.history-wide .history-balls .ball,
+      .combo-row.history-wide .history-balls .tiny-ball{
+        width:25px !important;
+        height:25px !important;
+        min-width:25px !important;
+        font-size:12px !important;
+        line-height:25px !important;
+      }
+
+      .combo-row.history-wide .history-balls .selected-ball{
+        outline-width:3px !important;
+        box-shadow:0 0 0 3px rgba(255,214,100,.55) !important;
+      }
+
+      .combo-row.history-wide .hit-tag{
+        font-size:11px !important;
+        padding:4px 5px !important;
+      }
+    }
+
+    @media(max-width:380px){
+      .history-head-wide,
+      .combo-table-head.history-head-wide,
+      .history-table-head.history-head-wide{
+        grid-template-columns:62px minmax(0,1fr) 30px 39px !important;
+        gap:2px !important;
+      }
+
+      .combo-row.history-wide{
+        grid-template-columns:62px minmax(0,1fr) 30px 39px !important;
+        gap:2px !important;
+        padding:7px 5px !important;
+      }
+
+      .combo-row.history-wide .history-balls .ball,
+      .combo-row.history-wide .history-balls .tiny-ball{
+        width:22px !important;
+        height:22px !important;
+        min-width:22px !important;
+        font-size:11px !important;
+        line-height:22px !important;
+      }
+
+      .combo-row.history-wide .hit-tag{
+        font-size:10px !important;
+        padding:3px 4px !important;
+      }
     }
   `;
   document.head.appendChild(st);
 }
 
-function renderHistory(){injectHistoryWideStyle();const matches=rangeMatches();if(!matches.length){$('history').innerHTML=`<div class="combo-card center">조건에 맞는 회차가 없습니다.</div>`;return}$('history').innerHTML=matches.map(x=>{const row=x.row,hit=x.hit,tag=`${hit.normal}${hit.bonus&&includeBonus()?'+B':''}개`,nums=row.numbers.map(n=>tinyBall(n,selectedNums.includes(n)?'selected-ball':'')).join('');return`<div class="combo-row history-wide"><div class="round-cell"><b>${row.round}회</b><span>${row.date}</span></div><div>${String(row.date).slice(5)}</div><div class="history-balls">${nums}</div><div>${tinyBall(row.bonus,selectedNums.includes(row.bonus)?'selected-ball':'')}</div><div><span class="hit-tag">${tag}</span></div></div>`}).join('')}
+function renderHistory(){injectHistoryWideStyle();const matches=rangeMatches();if(!matches.length){$('history').innerHTML=`<div class="combo-card center">조건에 맞는 회차가 없습니다.</div>`;return}$('history').innerHTML=matches.map(x=>{const row=x.row,hit=x.hit,tag=`${hit.normal}${hit.bonus&&includeBonus()?'+B':''}개`,nums=row.numbers.map(n=>tinyBall(n,selectedNums.includes(n)?'selected-ball':'')).join('');return`<div class="combo-row history-wide"><div class="round-cell"><b>${row.round}회</b><span>${row.date}</span></div><div class="history-balls">${nums}</div><div>${tinyBall(row.bonus,selectedNums.includes(row.bonus)?'selected-ball':'')}</div><div><span class="hit-tag">${tag}</span></div></div>`}).join('')}
 function renderAll(){renderDreamBridge();if(!selectedNums.length)return;setStatusText();renderSummary();renderCompanion();renderSavedCombos();renderHistory()}
 async function loadData(){try{const res=await fetch('./data/lotto.json?ts='+Date.now());const data=await res.json();if(!Array.isArray(data))throw new Error('lotto.json 배열 아님');lottoData=data.sort((a,b)=>b.round-a.round);$('status').textContent=`전체 ${lottoData.length}개 회차 데이터를 불러왔습니다.`;setTimeout(()=>{renderDreamBridge();renderSavedCombos()},0);const saved=JSON.parse(localStorage.getItem('haengun_my_nums')||'null');if(Array.isArray(saved)&&saved.length>=2){selectedNums=saved.slice(0,6).sort((a,b)=>a-b);$('comboInput').value=selectedNums.join(' ');renderAll()}}catch(e){console.error(e);$('status').textContent='데이터 오류: data/lotto.json을 읽지 못했습니다.'}}
 function addModeButtons(){const box=document.querySelector('.combo-btn-row');if(!box||document.getElementById('modePartial'))return;const wrap=document.createElement('div');wrap.className='combo-btn-row';wrap.innerHTML=`<button id="modePartial" class="active">부분일치</button><button id="modeExact">완전일치</button>`;box.insertAdjacentElement('afterend',wrap);$('modePartial').onclick=()=>{matchMode='partial';$('modePartial').classList.add('active');$('modeExact').classList.remove('active');renderAll()};$('modeExact').onclick=()=>{matchMode='exact';$('modeExact').classList.add('active');$('modePartial').classList.remove('active');renderAll()}}
