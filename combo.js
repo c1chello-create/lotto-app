@@ -26,94 +26,50 @@ function companionIndexScore(nums,data){let s=0;nums.forEach(n=>{if(!selectedNum
 function historicalHitScore(nums,rows){let score=0;rows.slice(0,100).forEach(x=>{const p=x.row.numbers||[],h=nums.filter(n=>p.includes(n)).length;if(h>=3)score+=h*h});return score}
 function gradeFromRank(i){if(i===0)return'S등급';if(i<=3)return'A등급';if(i<=6)return'B등급';return'실험'}
 function starByTrust(t){if(t>=88)return'★★★★★';if(t>=80)return'★★★★☆';if(t>=72)return'★★★☆☆';return'★★☆☆☆'}
-function comboScoreParts(nums,data,allFreq){const companion=companionIndexScore(nums,data),balance=zoneBalanceScore(nums),oddEven=oddEvenScore(nums),recent=recentTrendScore(nums),long=longTrendScore(nums,allFreq),historical=historicalHitScore(nums,data.rows)*0.35,total=companion+balance+oddEven+recent+long+historical;return{companion,balance,oddEven,recent,long,historical,total}}
+
+function dreamNumberMap(keyword){
+  const dict={"물":[1,7,17,26,32,42],"바다":[7,17,26,34,42,45],"새":[5,11,17,23,31,42],"대통령":[1,10,19,29,37,44],"불":[3,9,18,27,36,45],"돈":[8,14,22,33,40,45],"돼지":[3,8,18,28,38,43],"뱀":[4,13,22,31,40,44],"용":[9,18,27,36,44,45],"옷":[6,12,21,30,39,42],"신발":[2,11,20,29,38,41],"차":[5,14,23,32,41,45],"도자기":[4,12,24,29,34,42],"그릇":[4,12,21,29,36,42],"다리미":[7,16,25,30,38,43],"스케이트":[6,15,24,33,39,44],"죽":[2,9,16,25,34,43],"얼굴":[1,11,20,28,37,45],"로또":[6,13,19,27,35,42],"행운":[7,14,21,28,35,42]};
+  const keys=Object.keys(dict).filter(k=>keyword.includes(k));
+  if(keys.length)return [...new Set(keys.flatMap(k=>dict[k]))].slice(0,6).sort((a,b)=>a-b);
+  let seed=[...keyword].reduce((s,ch)=>s+ch.charCodeAt(0),0)||12345, nums=[];
+  while(nums.length<6){seed=(seed*9301+49297)%233280;const n=seed%45+1;if(!nums.includes(n))nums.push(n)}
+  return nums.sort((a,b)=>a-b);
+}
+function renderDreamBridge(){
+  let box=document.getElementById('dreamBridge');
+  if(!box){const first=document.querySelector('.combo-card');if(first){box=document.createElement('div');box.id='dreamBridge';first.insertAdjacentElement('afterend',box)}}
+  if(!box)return;
+  if(!box.innerHTML)box.innerHTML=`<div class="combo-card" style="background:#f7fff4"><b>🌙 꿈해몽 연동</b><p class="combo-guide">꿈 키워드를 입력하면 추천번호를 조합분석에 바로 적용합니다.</p><input id="dreamComboInput" class="combo-input" placeholder="예: 물, 새, 돼지, 도자기"><button id="dreamComboBtn" class="combo-btn" style="background:#2f7d32">꿈해몽 번호 적용</button></div>`;
+  const btn=document.getElementById('dreamComboBtn');
+  if(btn&&!btn.dataset.bound){btn.dataset.bound='1';btn.onclick=()=>{const kw=(document.getElementById('dreamComboInput').value||'').trim();if(!kw){alert('꿈 키워드를 입력하세요.');return}const nums=dreamNumberMap(kw);document.getElementById('comboInput').value=nums.join(' ');selectedNums=nums;renderAll()}}
+}
+function learnedHitRate(nums){
+  const rows=lottoData.map(row=>{const normal=nums.filter(n=>(row.numbers||[]).includes(n)).length,bonus=nums.includes(row.bonus);return{row,normal,bonus,total:normal+(bonus?1:0)}});
+  const hit3=rows.filter(x=>x.normal>=3||x.total>=3).length,hit4=rows.filter(x=>x.normal>=4||x.total>=4).length,hit5=rows.filter(x=>x.normal>=5||x.total>=5).length;
+  const best=[...rows].sort((a,b)=>b.total-a.total||b.normal-a.normal||b.row.round-a.row.round)[0];
+  const avg=(rows.reduce((s,x)=>s+x.normal,0)/Math.max(1,rows.length)).toFixed(2);
+  const recentSet=new Set(lottoData.slice(0,100).map(r=>r.round));
+  const recent=rows.filter(x=>recentSet.has(x.row.round)&&(x.normal>=3||x.total>=3)).length;
+  return{hit3,hit4,hit5,best,avg,recent};
+}
+function learningScore(nums){const h=learnedHitRate(nums);return Math.min(32,h.hit3*0.08+h.hit4*0.55+h.hit5*2.5+h.recent*0.18+Number(h.avg)*2)}
+function renderComboReport(nums){const h=learnedHitRate(nums);const best=h.best?`${h.best.row.round}회 ${h.best.normal}${h.best.bonus?'+B':''}개`:'기록 없음';return `<p class="combo-guide">성적표: 3개+ ${h.hit3}회 · 4개+ ${h.hit4}회 · 5개+ ${h.hit5}회 · 평균 ${h.avg}개 · 최고 ${best}</p>`}
+function savedComboKey(){return 'haengun_combo_saved_v2'}
+function loadSavedCombos(){try{return JSON.parse(localStorage.getItem(savedComboKey())||'[]')}catch(e){return[]}}
+function saveSavedCombos(list){localStorage.setItem(savedComboKey(),JSON.stringify(list))}
+function saveRecommendedCombo(numsText,grade,trust){const nums=numsText.split(',').map(Number).sort((a,b)=>a-b),key=nums.join(',');const list=loadSavedCombos();if(list.some(x=>x.key===key)){alert('이미 저장된 조합입니다.');return}list.unshift({key,nums,grade,trust,createdAt:new Date().toISOString()});saveSavedCombos(list.slice(0,50));alert('추천조합을 저장했습니다.');renderSavedCombos()}
+function analyzeSavedCombo(numsText){const nums=numsText.split(',').map(Number).sort((a,b)=>a-b),h=learnedHitRate(nums);const best=h.best?`${h.best.row.round}회 / ${h.best.normal}${h.best.bonus?'+B':''}개`:'없음';alert(['조합: '+nums.join(' '),'3개 이상: '+h.hit3+'회','4개 이상: '+h.hit4+'회','5개 이상: '+h.hit5+'회','평균 적중: '+h.avg+'개','최고 기록: '+best].join('\n'))}
+function deleteSavedCombo(key){saveSavedCombos(loadSavedCombos().filter(x=>x.key!==key));renderSavedCombos()}
+function renderSavedCombos(){let box=document.getElementById('savedCombos');if(!box){const title=[...document.querySelectorAll('.combo-section-title b')].find(x=>x.textContent.includes('조합별'));if(title){box=document.createElement('div');box.id='savedCombos';title.closest('.combo-section-title').insertAdjacentElement('beforebegin',box)}}if(!box)return;const list=loadSavedCombos();if(!list.length){box.innerHTML='';return}box.innerHTML=`<div class="combo-card" style="background:#f8fbff"><b>📌 저장한 추천조합 성적표</b><p class="combo-guide">저장한 조합의 실제 3개 이상 적중 이력을 표시합니다.</p>${list.map(item=>`<div style="border-top:1px solid #e7edf5;padding:10px 0"><b>${item.grade||'저장조합'} · 신뢰도 ${item.trust||'-'}%</b><div class="combo-selected">${item.nums.map(n=>ball(n,true)).join('')}</div>${renderComboReport(item.nums)}<div class="combo-btn-row"><button onclick="analyzeSavedCombo('${item.key}')">상세분석</button><button onclick="deleteSavedCombo('${item.key}')">삭제</button></div></div>`).join('')}</div>`}
+
+function comboScoreParts(nums,data,allFreq){const companion=companionIndexScore(nums,data),balance=zoneBalanceScore(nums),oddEven=oddEvenScore(nums),recent=recentTrendScore(nums),long=longTrendScore(nums,allFreq),historical=historicalHitScore(nums,data.rows)*0.35,learned=learningScore(nums),total=companion+balance+oddEven+recent+long+historical+learned;return{companion,balance,oddEven,recent,long,historical,learned,total}}
 function combinations(arr,k){const out=[];function rec(start,pick){if(pick.length===k){out.push(pick);return}for(let i=start;i<arr.length;i++)rec(i+1,[...pick,arr[i]])}rec(0,[]);return out}
 function makeRankedCombos(data){const companionPool=data.top.map(x=>x.n).filter(n=>!selectedNums.includes(n)),allFreq=frequencyMap(lottoData);let candidates=[];if(selectedNums.length>=6){combinations(selectedNums,4).forEach(s=>{combinations(companionPool.slice(0,12),2).forEach(c=>candidates.push({nums:[...s,...c].sort((a,b)=>a-b),replace:2}))});combinations(selectedNums,5).forEach(s=>{companionPool.slice(0,12).forEach(c=>candidates.push({nums:[...s,c].sort((a,b)=>a-b),replace:1}))});combinations(selectedNums,3).forEach(s=>{combinations(companionPool.slice(0,10),3).forEach(c=>candidates.push({nums:[...s,...c].sort((a,b)=>a-b),replace:3}))})}else{const need=6-selectedNums.length;combinations(companionPool.slice(0,15),need).forEach(c=>candidates.push({nums:[...selectedNums,...c].sort((a,b)=>a-b),replace:need}))}const seen=new Set();candidates=candidates.filter(c=>{const key=c.nums.join(',');if(seen.has(key))return false;seen.add(key);return true});let scored=candidates.map(c=>({...c,parts:comboScoreParts(c.nums,data,allFreq)})).sort((a,b)=>b.parts.total-a.parts.total||a.nums.join('').localeCompare(b.nums.join(''))).slice(0,10);if(!scored.length)return[];const max=scored[0].parts.total||1,min=scored[scored.length-1].parts.total||0;return scored.map((x,i)=>{const trust=Math.round(66+((x.parts.total-min)/(max-min||1))*26);return{...x,rank:i+1,grade:gradeFromRank(i),trust:Math.max(58,Math.min(94,trust)),stars:starByTrust(trust)}})}
-function renderRankedCombos(data){const combos=makeRankedCombos(data);if(!combos.length)return`<div class="combo-card" style="margin:10px 0;background:#fff7e6"><b>🏆 AI 조합 랭킹</b><p class="combo-guide">추천조합을 만들 만큼 동반번호가 부족합니다. 전체 회차로 바꿔보세요.</p></div>`;return`<div class="combo-card" style="margin:10px 0;background:#fff7e6"><b>🏆 AI 조합 랭킹 TOP 10</b><p class="combo-guide">동반지수, 구간균형, 홀짝, 최근추세, 장기추세를 합산해 10개 조합을 만들었습니다.</p>${combos.map(c=>`<div style="border-top:1px solid #f2e6c9;padding:11px 0"><b style="color:#8a5b00">${c.rank}위 · ${c.grade} · 신뢰도 ${c.trust}%</b><span style="display:block;color:#8a5b00;font-size:13px;margin-top:2px">${c.stars}</span><div class="combo-selected">${c.nums.map(n=>ball(n,true,selectedNums.includes(n)?'selected-ball':'')).join('')}</div><p class="combo-guide">신뢰도 산식: 동반지수 ${Math.round(c.parts.companion)} + 균형 ${c.parts.balance} + 홀짝 ${c.parts.oddEven} + 추세 ${c.parts.recent+c.parts.long} + 장기 ${Math.round(c.parts.historical||0)}</p>
-      <div class="combo-btn-row" style="margin-top:8px">
-        <button onclick="saveRecommendedCombo('${c.nums.join(',')}','${c.grade}',${c.trust})">저장</button>
-        <button onclick="analyzeSavedCombo('${c.nums.join(',')}')">적중분석</button>
-      </div></div>`).join('')}</div>`}
+function renderRankedCombos(data){const combos=makeRankedCombos(data);if(!combos.length)return`<div class="combo-card" style="margin:10px 0;background:#fff7e6"><b>🏆 AI 조합 랭킹</b><p class="combo-guide">추천조합을 만들 만큼 동반번호가 부족합니다. 전체 회차로 바꿔보세요.</p></div>`;return`<div class="combo-card" style="margin:10px 0;background:#fff7e6"><b>🏆 AI 조합 랭킹 TOP 10</b><p class="combo-guide">동반지수, 구간균형, 홀짝, 최근추세, 장기추세를 합산해 10개 조합을 만들었습니다.</p>${combos.map(c=>`<div style="border-top:1px solid #f2e6c9;padding:11px 0"><b style="color:#8a5b00">${c.rank}위 · ${c.grade} · 신뢰도 ${c.trust}%</b><span style="display:block;color:#8a5b00;font-size:13px;margin-top:2px">${c.stars}</span><div class="combo-selected">${c.nums.map(n=>ball(n,true,selectedNums.includes(n)?'selected-ball':'')).join('')}</div><p class="combo-guide">신뢰도 산식: 동반 ${Math.round(c.parts.companion)} + 균형 ${c.parts.balance} + 홀짝 ${c.parts.oddEven} + 추세 ${c.parts.recent+c.parts.long} + 장기 ${Math.round(c.parts.historical||0)} + 학습 ${Math.round(c.parts.learned||0)}</p>${renderComboReport(c.nums)}<div class="combo-btn-row" style="margin-top:8px"><button onclick="saveRecommendedCombo('${c.nums.join(',')}','${c.grade}',${c.trust})">저장</button><button onclick="analyzeSavedCombo('${c.nums.join(',')}')">적중분석</button></div></div>`).join('')}</div>`}
 function renderCompanion(){const data=companionAnalysis(),max=data.top.length?data.top[0].count:1,threshold=minHit();let html=`<div class="combo-card"><b>🤝 동반번호 추천</b><p class="combo-guide">${selectedNums.map(n=>n+'번').join(', ')} 기준으로, ${threshold}개 이상 함께 나온 회차에서 추가 번호를 집계했습니다.</p>`;if(data.recommend.length){html+=`<div class="combo-card" style="margin:10px 0;background:#f0f7ff"><b>AI 추천 동반번호</b><div class="combo-selected">${data.recommend.map(n=>ball(n,true)).join('')}</div><p class="combo-guide">동반번호는 아래 AI 조합 랭킹에 반영됩니다.</p></div>`;html+=renderRankedCombos(data)}else{html+=`<p class="combo-guide">현재 범위에서는 추천할 동반번호가 없습니다. 전체 회차로 바꿔보세요.</p>`}html+=data.top.length?data.top.slice(0,10).map(x=>{const w=Math.max(8,Math.round(x.count/max*100));return`<div class="companion-row"><div>${ball(x.n,true)}</div><div class="companion-bar"><i style="width:${w}%"></i></div><div class="companion-count">${x.count}회 · 지수 ${x.index}</div></div>`}).join(''):`<div class="combo-guide">동반출현 기록이 없습니다.</div>`;html+=`<p class="combo-guide">분석 기준: 조건을 만족한 ${data.rows.length}개 회차에서 추가 번호를 집계했습니다.</p></div>`;$('companion').innerHTML=html}
-
-function savedComboKey(){return 'haengun_combo_saved_v1'}
-function loadSavedCombos(){
-  try{return JSON.parse(localStorage.getItem(savedComboKey())||'[]')}catch(e){return[]}
-}
-function saveSavedCombos(list){localStorage.setItem(savedComboKey(),JSON.stringify(list))}
-function saveRecommendedCombo(numsText,grade,trust){
-  const nums=numsText.split(',').map(Number).sort((a,b)=>a-b);
-  const key=nums.join(',');
-  const list=loadSavedCombos();
-  if(list.some(x=>x.key===key)){alert('이미 저장된 조합입니다.');return}
-  list.unshift({key,nums,grade,trust,createdAt:new Date().toISOString()});
-  saveSavedCombos(list.slice(0,50));
-  alert('추천조합을 저장했습니다.');
-  renderSavedCombos();
-}
-function comboHitRows(nums){
-  return lottoData.map(row=>{
-    const normal=nums.filter(n=>(row.numbers||[]).includes(n)).length;
-    const bonus=nums.includes(row.bonus);
-    const total=normal+(bonus?1:0);
-    return{row,normal,bonus,total};
-  }).filter(x=>x.normal>=3||x.total>=3).sort((a,b)=>b.total-a.total||b.row.round-a.row.round);
-}
-function analyzeSavedCombo(numsText){
-  const nums=numsText.split(',').map(Number).sort((a,b)=>a-b);
-  const rows=comboHitRows(nums);
-  const exact=lottoData.filter(row=>(row.numbers||[]).slice().sort((a,b)=>a-b).join(',')===nums.join(',')).length;
-  const best=rows[0];
-  const msg=[
-    '조합: '+nums.join(' '),
-    '3개 이상 적중 이력: '+rows.length+'회',
-    '완전일치: '+exact+'회',
-    best?('최고 기록: '+best.row.round+'회 / '+best.normal+(best.bonus?'+B':'')+'개'):'최고 기록: 없음'
-  ].join('\n');
-  alert(msg);
-}
-function deleteSavedCombo(key){
-  const list=loadSavedCombos().filter(x=>x.key!==key);
-  saveSavedCombos(list);
-  renderSavedCombos();
-}
-function renderSavedCombos(){
-  let box=document.getElementById('savedCombos');
-  if(!box){
-    const historyTitle=[...document.querySelectorAll('.combo-section-title b')].find(x=>x.textContent.includes('조합별'));
-    if(historyTitle){
-      const wrap=document.createElement('div');
-      wrap.id='savedCombos';
-      historyTitle.closest('.combo-section-title').insertAdjacentElement('beforebegin',wrap);
-      box=wrap;
-    }
-  }
-  if(!box)return;
-  const list=loadSavedCombos();
-  if(!list.length){box.innerHTML='';return}
-  box.innerHTML=`<div class="combo-card" style="background:#f8fbff">
-    <b>📌 저장한 추천조합</b>
-    <p class="combo-guide">저장한 조합의 3개 이상 적중 이력을 확인할 수 있습니다.</p>
-    ${list.map(item=>{
-      const rows=comboHitRows(item.nums);
-      const best=rows[0];
-      const bestText=best?`${best.row.round}회 ${best.normal}${best.bonus?'+B':''}개`:'기록 없음';
-      return `<div style="border-top:1px solid #e7edf5;padding:10px 0">
-        <b>${item.grade||'저장조합'} · 신뢰도 ${item.trust||'-'}%</b>
-        <div class="combo-selected">${item.nums.map(n=>ball(n,true)).join('')}</div>
-        <p class="combo-guide">3개 이상 ${rows.length}회 · 최고 ${bestText}</p>
-        <div class="combo-btn-row">
-          <button onclick="analyzeSavedCombo('${item.key}')">상세분석</button>
-          <button onclick="deleteSavedCombo('${item.key}')">삭제</button>
-        </div>
-      </div>`;
-    }).join('')}
-  </div>`;
-}
-
 function renderHistory(){const matches=rangeMatches();if(!matches.length){$('history').innerHTML=`<div class="combo-card center">조건에 맞는 회차가 없습니다.</div>`;return}$('history').innerHTML=matches.map(x=>{const row=x.row,hit=x.hit,tag=`${hit.normal}${hit.bonus&&includeBonus()?'+B':''}개`,nums=row.numbers.map(n=>tinyBall(n,selectedNums.includes(n)?'selected-ball':'')).join('');return`<div class="combo-row"><div class="round-cell"><b>${row.round}회</b><span>${row.date}</span></div><div>${String(row.date).slice(5)}</div><div class="history-balls">${nums}</div><div>${tinyBall(row.bonus,selectedNums.includes(row.bonus)?'selected-ball':'')}</div><div><span class="hit-tag">${tag}</span></div></div>`}).join('')}
-function renderAll(){if(!selectedNums.length)return;setStatusText();renderSummary();renderCompanion();renderSavedCombos();renderHistory()}
-async function loadData(){try{const res=await fetch('./data/lotto.json?ts='+Date.now());const data=await res.json();if(!Array.isArray(data))throw new Error('lotto.json 배열 아님');lottoData=data.sort((a,b)=>b.round-a.round);$('status').textContent=`전체 ${lottoData.length}개 회차 데이터를 불러왔습니다.`; setTimeout(renderSavedCombos,0);const saved=JSON.parse(localStorage.getItem('haengun_my_nums')||'null');if(Array.isArray(saved)&&saved.length>=2){selectedNums=saved.slice(0,6).sort((a,b)=>a-b);$('comboInput').value=selectedNums.join(' ');renderAll()}}catch(e){console.error(e);$('status').textContent='데이터 오류: data/lotto.json을 읽지 못했습니다.'}}
+function renderAll(){renderDreamBridge();if(!selectedNums.length)return;setStatusText();renderSummary();renderCompanion();renderSavedCombos();renderHistory()}
+async function loadData(){try{const res=await fetch('./data/lotto.json?ts='+Date.now());const data=await res.json();if(!Array.isArray(data))throw new Error('lotto.json 배열 아님');lottoData=data.sort((a,b)=>b.round-a.round);$('status').textContent=`전체 ${lottoData.length}개 회차 데이터를 불러왔습니다.`;setTimeout(()=>{renderDreamBridge();renderSavedCombos()},0);const saved=JSON.parse(localStorage.getItem('haengun_my_nums')||'null');if(Array.isArray(saved)&&saved.length>=2){selectedNums=saved.slice(0,6).sort((a,b)=>a-b);$('comboInput').value=selectedNums.join(' ');renderAll()}}catch(e){console.error(e);$('status').textContent='데이터 오류: data/lotto.json을 읽지 못했습니다.'}}
 function addModeButtons(){const box=document.querySelector('.combo-btn-row');if(!box||document.getElementById('modePartial'))return;const wrap=document.createElement('div');wrap.className='combo-btn-row';wrap.innerHTML=`<button id="modePartial" class="active">부분일치</button><button id="modeExact">완전일치</button>`;box.insertAdjacentElement('afterend',wrap);$('modePartial').onclick=()=>{matchMode='partial';$('modePartial').classList.add('active');$('modeExact').classList.remove('active');renderAll()};$('modeExact').onclick=()=>{matchMode='exact';$('modeExact').classList.add('active');$('modePartial').classList.remove('active');renderAll()}}
-function bindEvents(){$('analyzeBtn').onclick=()=>{const nums=parseNums();if(!nums)return;selectedNums=nums;renderAll()};document.querySelectorAll('.range-btn').forEach(btn=>{btn.onclick=()=>{document.querySelectorAll('.range-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');matchRange=btn.dataset.range;renderAll()}});$('includeBonus').onchange=()=>renderAll();addModeButtons()}
+function bindEvents(){setTimeout(renderDreamBridge,0);$('analyzeBtn').onclick=()=>{const nums=parseNums();if(!nums)return;selectedNums=nums;renderAll()};document.querySelectorAll('.range-btn').forEach(btn=>{btn.onclick=()=>{document.querySelectorAll('.range-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');matchRange=btn.dataset.range;renderAll()}});$('includeBonus').onchange=()=>renderAll();addModeButtons()}
 bindEvents();loadData();
