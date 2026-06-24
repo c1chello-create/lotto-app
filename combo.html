@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>행운로또 조합분석 🍀</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body{background:#f5f7fb}.combo-wrap{max-width:520px;margin:0 auto;padding-bottom:40px}
+    .combo-top{background:#fff;border-bottom:1px solid #e7edf5;position:sticky;top:0;z-index:10}
+    .combo-titlebar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;font-weight:900}
+    .combo-titlebar a{text-decoration:none;color:#11366b;font-size:28px}.combo-titlebar div{font-size:18px}
+    .combo-card{background:#fff;border:1px solid #e7edf5;border-radius:18px;padding:16px;margin:12px;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+    .combo-guide{font-size:13px;color:#667085;line-height:1.45}.combo-input{width:100%;box-sizing:border-box;border:1px solid #d0d5dd;border-radius:12px;padding:12px;font-size:16px;margin:8px 0}
+    .combo-btn{width:100%;border:0;border-radius:14px;padding:13px;font-size:16px;font-weight:900;background:#11366b;color:#fff}
+    .combo-btn-row{display:flex;gap:8px;margin-top:10px}.combo-btn-row button{flex:1;border:1px solid #d0d5dd;background:#fff;border-radius:12px;padding:9px;font-weight:800;color:#344054}.combo-btn-row button.active{background:#11366b;color:#fff;border-color:#11366b}
+    .combo-selected{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.summary-metrics{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:12px}.summary-metrics div{background:#f8fafc;border-radius:14px;padding:12px;text-align:center}.summary-metrics b{display:block;font-size:18px;color:#11366b}.summary-metrics span{font-size:12px;color:#667085}
+    .combo-section-title{margin:14px 12px 8px}.combo-section-title b{font-size:17px;color:#101828}
+    .history-table-head,.combo-row{display:grid;grid-template-columns:64px 62px 1fr 42px 50px;gap:4px;align-items:center}
+    .history-table-head{font-size:12px;color:#667085;padding:8px 12px}.combo-row{background:#fff;border:1px solid #eef2f7;border-radius:14px;margin:8px 12px;padding:10px;font-size:12px}.combo-row .round-cell b{display:block;font-size:14px}.combo-row .round-cell span{color:#667085}.history-balls{display:flex;gap:3px;flex-wrap:wrap}
+    .hit-tag{display:inline-block;border-radius:14px;padding:4px 7px;font-weight:900;font-size:11px;background:#ffe8a3;color:#8a5b00}
+    .companion-row{display:grid;grid-template-columns:48px 1fr 56px;gap:8px;align-items:center;border-top:1px solid #eef2f7;padding:9px 0}.companion-row:first-child{border-top:0}.companion-bar{height:9px;background:#eaf4ff;border-radius:10px;overflow:hidden}.companion-bar i{display:block;height:100%;background:#2d8cff;border-radius:10px}.companion-count{text-align:right;font-size:13px;font-weight:900;color:#11366b}
+    .status-msg{margin:14px 12px;color:#667085;font-size:14px}
+  </style>
+</head>
+<body>
+<div class="combo-wrap">
+  <header class="combo-top">
+    <div class="status"><span>9:41</span><span>▮▮▮ Wi‑Fi 100</span></div>
+    <div class="combo-titlebar"><a href="index.html">‹</a><div>조합분석</div><span>🍀</span></div>
+  </header>
+
+  <div class="combo-card">
+    <b>분석할 번호 입력</b>
+    <p class="combo-guide">2개~6개 번호를 입력하세요. 예: 12 13 29 34</p>
+    <input id="comboInput" class="combo-input" placeholder="예: 12 13 29 34">
+    <button id="analyzeBtn" class="combo-btn">조합 분석하기</button>
+    <div class="combo-btn-row">
+      <button class="range-btn active" data-range="50">최근 50회</button>
+      <button class="range-btn" data-range="100">최근 100회</button>
+      <button class="range-btn" data-range="all">전체</button>
+    </div>
+    <label class="checkline"><input type="checkbox" id="includeBonus" checked> 보너스 번호 포함</label>
+  </div>
+
+  <div id="status" class="status-msg">데이터를 불러오는 중입니다...</div>
+  <div id="summary"></div>
+  <div id="companion"></div>
+  <div class="combo-section-title"><b>조합별 출현 이력</b></div>
+  <div class="history-table-head"><span>회차</span><span>추첨일</span><span>당첨번호</span><span>보너스</span><span></span></div>
+  <div id="history"></div>
+</div>
+<script src="combo.js?v=combo-page-v1"></script>
+</body>
+</html>
