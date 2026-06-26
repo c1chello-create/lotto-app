@@ -88,7 +88,31 @@ function calcHits(nums,range="all"){
   return source.map(x=>{const hit=x.numbers.filter(n=>nums.includes(Number(n)));const bonusHit=nums.includes(Number(x.bonus));return {...x,hitCount:hit.length,bonusHit};});
 }
 function renderDetail(){renderPickRow();renderNumberSummary();renderMatchHistory();}
-function renderPickRow(){if(!$("pickRow"))return;$("pickRow").innerHTML=myNums.map(n=>`<div class="pick-slot">${ball(n)}</div>`).join("");}
+function renderPickRow(){
+  if(!$("pickRow")) return;
+
+  $("pickRow").innerHTML = Array.from({length:6}).map((_, i) => {
+    const v = myNums[i] || "";
+    return `<input class="pick-slot pick-input" type="number" inputmode="numeric" min="1" max="45" value="${v}" data-idx="${i}">`;
+  }).join("");
+
+  document.querySelectorAll(".pick-input").forEach(input => {
+    input.addEventListener("input", () => {
+      const vals = [...document.querySelectorAll(".pick-input")]
+        .map(el => Number(el.value))
+        .filter(n => n >= 1 && n <= 45);
+
+      myNums = [...new Set(vals)].slice(0, 6).sort((a,b) => a-b);
+
+      renderNumberSummary();
+      renderMatchHistory();
+      renderMyCard();
+
+      if($("matchInput")) $("matchInput").value = myNums.join(" ");
+      if($("matchBalls")) $("matchBalls").innerHTML = myNums.map(n => ball(n)).join("");
+    });
+  });
+}
 function renderNumberSummary(){
   if(!$("numberSummary"))return;
   const rows=calcHits(myNums,"all");const appear=rows.filter(x=>x.hitCount>=1||x.bonusHit).length;
@@ -105,7 +129,23 @@ function renderMatchHistory(){
     return `<div class="history-row"><div class="round-cell"><b>${x.round}회</b><span>${formatDate(x.date)}</span></div><div class="history-balls">${nums}</div><div>${tinyBall(x.bonus,includeBonus&&x.bonusHit?"selected-ball":"")}</div><div><span class="hit-tag ${x.hitCount>=3?"hit-win":"hit-none"}">${tagText}</span></div></div>`;
   }).join("")||`<div class="history-row"><div class="round-cell"><b>-</b><span>-</span></div><div>출현 이력이 없습니다.</div><div>-</div><div>-</div></div>`;
 }
-function analyzeMatch(){renderDetail();}
+function analyzeMatch(){
+  const input = $("matchInput");
+  const text = input ? input.value : myNums.join(" ");
+  const nums = [...new Set(String(text).replaceAll(",", " ").split(/\s+/).map(Number).filter(n => n >= 1 && n <= 45))].sort((a,b) => a-b);
+
+  if(nums.length < 1){
+    alert("1~45 사이 숫자를 1개 이상 입력하세요.");
+    return;
+  }
+
+  myNums = nums.slice(0, 6);
+  if($("matchInput")) $("matchInput").value = myNums.join(" ");
+  if($("matchBalls")) $("matchBalls").innerHTML = myNums.map(n => ball(n)).join("");
+
+  renderDetail();
+  renderMyCard();
+}
 
 function dreamRecommend(){
   const keyword=$("dreamInput").value.trim()||"행운";const seed=[...keyword].reduce((s,ch)=>s+ch.charCodeAt(0),0);let nums=[];let x=seed;

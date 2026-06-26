@@ -24,3 +24,32 @@
 .result-row .nums{display:flex!important;align-items:center!important;gap:5px!important;flex-wrap:nowrap!important}
 .result-row .small-ball{width:28px!important;height:28px!important;font-size:13px!important}
 /* ===== 끝: 행운로또 UI 안정화 완성본 v1 ===== */
+
+
+/* ===== 상세분석 번호 즉시분석 패치 v1 ===== */
+.pick-input{
+  border:2px dashed #d9e2ef !important;
+  border-radius:50% !important;
+  width:52px !important;
+  height:52px !important;
+  text-align:center !important;
+  font-size:21px !important;
+  font-weight:900 !important;
+  color:#12376b !important;
+  background:#fff !important;
+  box-shadow:0 8px 14px rgba(15,35,70,.08) !important;
+  outline:none !important;
+  appearance:textfield !important;
+  -webkit-appearance:none !important;
+}
+.pick-input::-webkit-inner-spin-button,
+.pick-input::-webkit-outer-spin-button{
+  -webkit-appearance:none !important;
+  margin:0 !important;
+}
+.pick-input:focus{
+  border-color:#4b8df7 !important;
+  box-shadow:0 0 0 4px rgba(75,141,247,.15), 0 8px 14px rgba(15,35,70,.08) !important;
+}
+/* ===== 끝: 상세분석 번호 즉시분석 패치 v1 ===== */
+
