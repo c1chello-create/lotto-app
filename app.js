@@ -115,19 +115,54 @@ function renderPickRow(){
 }
 function renderNumberSummary(){
   if(!$("numberSummary"))return;
-  const rows=calcHits(myNums,"all");const appear=rows.filter(x=>x.hitCount>=1||x.bonusHit).length;
-  const recentIdx=rows.findIndex(x=>x.hitCount>=1||x.bonusHit);const miss=recentIdx>=0?recentIdx+1:"-";
-  $("numberSummary").innerHTML=`<div class="summary-card"><div class="summary-top"><div><h3>내 예상번호 분석 요약</h3><div class="balls">${myNums.map(n=>ball(n)).join("")}</div></div></div><div class="summary-metrics"><div><b>${appear||"-"}</b><span>출현 횟수</span></div><div><b>${recentIdx>=0?miss+"회 전":"-"}</b><span>최근 출현</span></div><div><b>${miss}</b><span>미출현 기간</span></div><div><b>균형형</b><span>구간 분포</span></div><div><b>${myNums.length}개</b><span>분석 번호</span></div></div></div>`;
+
+  const targetCount = myNums.length;
+  if(targetCount < 1){
+    $("numberSummary").innerHTML=`<div class="summary-card"><h3>내 예상번호 분석 요약</h3><p class="note">분석할 번호를 1개 이상 입력하세요.</p></div>`;
+    return;
+  }
+
+  const rows = calcHits(myNums,"all").filter(x => {
+    const matched = x.hitCount + (includeBonus && x.bonusHit ? 1 : 0);
+    return matched >= targetCount;
+  });
+
+  const appear = rows.length;
+  const recentRound = rows.length ? rows[0].round : "-";
+  const recentIdx = rows.length ? lottoData.findIndex(x => Number(x.round) === Number(rows[0].round)) : -1;
+  const miss = recentIdx >= 0 ? recentIdx + 1 : "-";
+
+  $("numberSummary").innerHTML=`<div class="summary-card"><div class="summary-top"><div><h3>내 예상번호 분석 요약</h3><div class="balls">${myNums.map(n=>ball(n)).join("")}</div></div></div><div class="summary-metrics"><div><b>${appear||"-"}</b><span>전체포함 회차</span></div><div><b>${recentRound}</b><span>최근 회차</span></div><div><b>${miss}</b><span>최근 출현</span></div><div><b>${targetCount}개</b><span>포함 조건</span></div><div><b>${includeBonus?"보너스 포함":"당첨번호만"}</b><span>분석 기준</span></div></div></div>`;
 }
 function renderMatchHistory(){
   if(!$("matchHistory"))return;
-  const range=historyRange==="all"?"all":Number(historyRange);
-  let rows=calcHits(myNums,range).filter(x=>x.hitCount>0||(includeBonus&&x.bonusHit)).slice(0,30);
-  $("matchHistory").innerHTML=rows.map(x=>{
-    const nums=x.numbers.map(n=>tinyBall(n,myNums.includes(Number(n))?"selected-ball":"")).join("");
-    let tagText=x.hitCount+"개";if(includeBonus&&x.bonusHit)tagText+="+B";
-    return `<div class="history-row"><div class="round-cell"><b>${x.round}회</b><span>${formatDate(x.date)}</span></div><div class="history-balls">${nums}</div><div>${tinyBall(x.bonus,includeBonus&&x.bonusHit?"selected-ball":"")}</div><div><span class="hit-tag ${x.hitCount>=3?"hit-win":"hit-none"}">${tagText}</span></div></div>`;
-  }).join("")||`<div class="history-row"><div class="round-cell"><b>-</b><span>-</span></div><div>출현 이력이 없습니다.</div><div>-</div><div>-</div></div>`;
+
+  const targetCount = myNums.length;
+  if(targetCount < 1){
+    $("matchHistory").innerHTML = `<div class="history-row"><div class="round-cell"><b>-</b><span>-</span></div><div>분석할 번호를 1개 이상 입력하세요.</div><div>-</div><div>-</div></div>`;
+    return;
+  }
+
+  const range = historyRange === "all" ? "all" : Number(historyRange);
+
+  let rows = calcHits(myNums, range).filter(x => {
+    const matched = x.hitCount + (includeBonus && x.bonusHit ? 1 : 0);
+    return matched >= targetCount;
+  }).slice(0, 50);
+
+  $("matchHistory").innerHTML = rows.map(x => {
+    const nums = x.numbers.map(n => tinyBall(n, myNums.includes(Number(n)) ? "selected-ball" : "")).join("");
+    const bonusMatched = includeBonus && x.bonusHit;
+    const matched = x.hitCount + (bonusMatched ? 1 : 0);
+    const tagText = bonusMatched ? `${x.hitCount}+B` : `${matched}개`;
+
+    return `<div class="history-row">
+      <div class="round-cell"><b>${x.round}회</b><span>${formatDate(x.date)}</span></div>
+      <div class="history-balls">${nums}</div>
+      <div>${tinyBall(x.bonus, bonusMatched ? "selected-ball" : "")}</div>
+      <div><span class="hit-tag hit-win">${tagText}</span></div>
+    </div>`;
+  }).join("") || `<div class="history-row"><div class="round-cell"><b>-</b><span>-</span></div><div>선택한 ${targetCount}개 번호가 모두 포함된 회차가 없습니다.</div><div>-</div><div>-</div></div>`;
 }
 function analyzeMatch(){
   const input = $("matchInput");
