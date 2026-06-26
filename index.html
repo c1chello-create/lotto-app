@@ -32,10 +32,10 @@
       <button class="help-btn">?</button>
     </div>
     <nav class="detail-tabs">
-      <button data-detail-mode="input">번호 입력</button>
-      <button class="active" data-detail-mode="detail">상세 분석</button>
-      <button data-detail-mode="combo">조합 분석</button>
-      <button data-detail-mode="graph">그래프 분석</button>
+      <button>번호 입력</button>
+      <button class="active">상세 분석</button>
+      <button>조합 분석</button>
+      <button>그래프 분석</button>
     </nav>
   </header>
 
@@ -55,7 +55,7 @@
         <button id="searchBtn">조회</button>
       </div>
       <div class="table-head">
-        <span>회차</span><span>추첨일</span><span>당첨번호</span><span>보너스</span>
+        <span>회차</span><span>당첨번호</span><span>보너스</span>
       </div>
       <div id="recentList"></div>
       <button id="moreBtn" class="more-btn">더 보기</button>
@@ -121,54 +121,22 @@
         <label class="checkline"><input type="checkbox" id="includeBonus" checked> 보너스 번호 포함 <span>ⓘ</span></label>
       </div>
 
-      <!-- 상세 분석 화면: 기존 app.js가 그대로 사용하는 영역입니다. -->
-      <div id="detailAnalysisView" class="analysis-view active">
-        <div id="numberSummary"></div>
+      <div id="numberSummary"></div>
 
-        <div class="history-head">
-          <b>회차별 출현 이력</b>
-          <div>
-            <button class="filter active" data-range="50">최근 50회</button>
-            <button class="filter" data-range="100">최근 100회</button>
-            <button class="filter" data-range="all">전체 회차</button>
-          </div>
-        </div>
-
-        <div class="history-table-head">
-          <span>회차</span><span>추첨일</span><span>당첨번호</span><span>보너스</span><span></span>
-        </div>
-        <div id="matchHistory"></div>
-        <p class="small-note">* 번호를 선택하면 해당 번호의 출현 이력을 확인할 수 있습니다.</p>
-      </div>
-
-      <!-- 조합 분석 화면: 다음 단계에서 상세분석 화면을 복사해 연결할 영역입니다. -->
-      <div id="comboAnalysisView" class="analysis-view hidden">
-        <div id="comboSummary"></div>
-        <div id="comboCompanionArea"></div>
-
-        <div class="history-head">
-          <b>조합별 출현 이력</b>
-          <div>
-            <button class="combo-filter active" data-range="50">최근 50회</button>
-            <button class="combo-filter" data-range="100">최근 100회</button>
-            <button class="combo-filter" data-range="all">전체 회차</button>
-          </div>
-        </div>
-
-        <div class="history-table-head">
-          <span>회차</span><span>추첨일</span><span>당첨번호</span><span>보너스</span><span></span>
-        </div>
-        <div id="comboHistory"></div>
-        <p class="small-note">* 조합분석에서는 동반출현분석과 AI 추천 동반번호를 추가할 수 있습니다.</p>
-      </div>
-
-      <!-- 그래프 분석 화면: 향후 그래프 기능 고도화용 영역입니다. -->
-      <div id="graphAnalysisView" class="analysis-view hidden">
-        <div class="card center">
-          <h3>그래프 분석</h3>
-          <p class="note">그래프 분석은 다음 단계에서 고도화합니다.</p>
+      <div class="history-head">
+        <b>회차별 출현 이력</b>
+        <div>
+          <button class="filter active" data-range="50">최근 50회</button>
+          <button class="filter" data-range="100">최근 100회</button>
+          <button class="filter" data-range="all">전체 회차</button>
         </div>
       </div>
+
+      <div class="history-table-head">
+        <span>회차</span><span>당첨번호</span><span>보너스</span><span></span>
+      </div>
+      <div id="matchHistory"></div>
+      <p class="small-note">* 번호를 선택하면 해당 번호의 출현 이력을 확인할 수 있습니다.</p>
     </section>
 
     <section id="dream" class="page">
@@ -190,6 +158,6 @@
     <button class="bottom-btn" data-page="recommend">⋯<span>추천</span></button>
   </footer>
 </div>
-<script src="app.js?v=match-detail-split-v1"></script>
+<script src="app.js?v=match-detail-v2"></script>
 </body>
 </html>
