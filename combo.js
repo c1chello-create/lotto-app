@@ -502,3 +502,101 @@ async function loadData(){try{const res=await fetch('./data/lotto.json?ts='+Date
 function addModeButtons(){const box=document.querySelector('.combo-btn-row');if(!box||document.getElementById('modePartial'))return;const wrap=document.createElement('div');wrap.className='combo-btn-row';wrap.innerHTML=`<button id="modePartial" class="active">부분일치</button><button id="modeExact">완전일치</button>`;box.insertAdjacentElement('afterend',wrap);$('modePartial').onclick=()=>{matchMode='partial';$('modePartial').classList.add('active');$('modeExact').classList.remove('active');renderAll()};$('modeExact').onclick=()=>{matchMode='exact';$('modeExact').classList.add('active');$('modePartial').classList.remove('active');renderAll()}}
 function bindEvents(){setTimeout(renderDreamBridge,0);$('analyzeBtn').onclick=()=>{const nums=parseNums();if(!nums)return;selectedNums=nums;renderAll()};document.querySelectorAll('.range-btn').forEach(btn=>{btn.onclick=()=>{document.querySelectorAll('.range-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');matchRange=btn.dataset.range;renderAll()}});$('includeBonus').onchange=()=>renderAll();addModeButtons()}
 injectHistoryWideStyle();bindEvents();loadData();
+
+
+/* =========================================================
+   행운로또 v1.6 조합분석 강화 패널
+   - 기존 combo.js 로직은 유지하고, AI 상세점수/유사회차/위험도/추천이유를 추가합니다.
+   ========================================================= */
+(function(){
+  function v16Clamp(n,min,max){return Math.max(min,Math.min(max,n));}
+  function v16Avg(arr){return arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:0;}
+  function v16Sum(nums){return nums.reduce((a,b)=>a+b,0);}
+  function v16Zones(nums){const z=[0,0,0,0,0];nums.forEach(n=>{if(n<=9)z[0]++;else if(n<=19)z[1]++;else if(n<=29)z[2]++;else if(n<=39)z[3]++;else z[4]++;});return z;}
+  function v16Grade(score){if(score>=90)return 'S'; if(score>=82)return 'A'; if(score>=72)return 'B'; if(score>=62)return 'C'; return 'D';}
+  function v16Stars(score){if(score>=92)return '★★★★★'; if(score>=84)return '★★★★☆'; if(score>=74)return '★★★☆☆'; if(score>=62)return '★★☆☆☆'; return '★☆☆☆☆';}
+  function v16Bar(label,score,desc){return `<div class="v16-score-row"><div><b>${label}</b><span>${desc||''}</span></div><strong>${Math.round(score)}%</strong><i><em style="width:${v16Clamp(score,0,100)}%"></em></i></div>`;}
+  function v16ClosestRows(nums){
+    return lottoData.map(row=>{
+      const normal=nums.filter(n=>(row.numbers||[]).includes(n)).length;
+      const bonus=nums.includes(row.bonus)?1:0;
+      const sumDiff=Math.abs(v16Sum(nums)-v16Sum(row.numbers||[]));
+      const zoneDiff=v16Zones(nums).reduce((s,v,i)=>s+Math.abs(v-v16Zones(row.numbers||[])[i]),0);
+      const oddDiff=Math.abs(nums.filter(n=>n%2).length-(row.numbers||[]).filter(n=>n%2).length);
+      const score=v16Clamp(normal*15+bonus*5+(40-sumDiff)*0.65+(10-zoneDiff*1.7)+(8-oddDiff*2),0,100);
+      return {row,normal,bonus,score:Math.round(score)};
+    }).sort((a,b)=>b.score-a.score||b.normal-a.normal||b.row.round-a.row.round).slice(0,5);
+  }
+  function v16StructureScores(nums){
+    const sum=v16Sum(nums), odd=nums.filter(n=>n%2).length, even=nums.length-odd;
+    const sorted=[...nums].sort((a,b)=>a-b), gaps=sorted.slice(1).map((n,i)=>n-sorted[i]);
+    const consecutive=gaps.filter(g=>g===1).length;
+    const zones=v16Zones(nums), used=zones.filter(x=>x>0).length, maxZone=Math.max(...zones);
+    const sumScore=v16Clamp(100-Math.abs(sum-138)*1.45,35,100);
+    const oeScore=v16Clamp(100-Math.abs(odd-even)*18,40,100);
+    const zoneScore=v16Clamp(used*19-(maxZone>3?22:0),35,100);
+    const gapScore=v16Clamp(100-consecutive*18-gaps.filter(g=>g>=16).length*10,35,100);
+    return {sum,odd,even,gaps,consecutive,zones,used,maxZone,sumScore,oeScore,zoneScore,gapScore};
+  }
+  function v16TrendScore(nums){
+    const recent50=frequencyMap(lottoData.slice(0,50));
+    const recent100=frequencyMap(lottoData.slice(0,100));
+    const all=frequencyMap(lottoData);
+    const r50=v16Avg(nums.map(n=>recent50[n]||0));
+    const r100=v16Avg(nums.map(n=>recent100[n]||0));
+    const a=v16Avg(nums.map(n=>all[n]||0));
+    return v16Clamp(55+r50*5.2+r100*1.7+(a/Math.max(1,lottoData.length))*100,40,100);
+  }
+  function v16CompanionScore(nums){
+    const rows=lottoData.slice(0,300).map(row=>({row,hit:{}}));
+    let pair=0, pairs=0;
+    for(let i=0;i<nums.length;i++){for(let j=i+1;j<nums.length;j++){pair+=pairScore(nums[i],nums[j],rows);pairs++;}}
+    return v16Clamp(48+(pair/Math.max(1,pairs))*7.5,35,100);
+  }
+  function v16RiskText(st){
+    const risks=[];
+    if(st.sum<95)risks.push('합계가 낮음');
+    if(st.sum>190)risks.push('합계가 높음');
+    if(st.consecutive>=2)risks.push('연속번호 많음');
+    if(st.maxZone>=4)risks.push('특정 번호대 편중');
+    if(Math.abs(st.odd-st.even)>=4)risks.push('홀짝 불균형');
+    if(!risks.length)risks.push('구조 위험 낮음');
+    return risks;
+  }
+  function v16RecommendationReasons(scores,st,similar){
+    const reasons=[];
+    if(scores.pattern>=85)reasons.push('과거 당첨패턴과 유사도가 높습니다.');
+    if(scores.trend>=82)reasons.push('최근 50·100회 흐름에서 출현 점수가 좋습니다.');
+    if(scores.companion>=82)reasons.push('번호끼리 함께 나온 기록이 비교적 강합니다.');
+    if(scores.balance>=82)reasons.push('구간분포·홀짝·합계 균형이 좋습니다.');
+    if(similar[0])reasons.push(`${similar[0].row.round}회와 가장 유사한 구조를 보입니다.`);
+    if(reasons.length<3)reasons.push('참고용 분석이며 실제 추첨은 무작위입니다.');
+    return reasons.slice(0,5);
+  }
+  function v16TotalScores(nums){
+    const st=v16StructureScores(nums), similar=v16ClosestRows(nums);
+    const pattern=v16Clamp(v16Avg(similar.map(x=>x.score)),40,100);
+    const trend=v16TrendScore(nums);
+    const companion=v16CompanionScore(nums);
+    const balance=v16Clamp(v16Avg([st.sumScore,st.oeScore,st.zoneScore,st.gapScore]),35,100);
+    const riskPenalty=v16RiskText(st).filter(x=>x!=='구조 위험 낮음').length*3.2;
+    const total=v16Clamp(pattern*.32+trend*.23+companion*.22+balance*.23-riskPenalty,30,99);
+    return {st,similar,pattern,trend,companion,balance,total,grade:v16Grade(total),stars:v16Stars(total),risks:v16RiskText(st),reasons:null};
+  }
+  window.renderV16AIPanel=function(){
+    if(!selectedNums || selectedNums.length<2 || !lottoData || !lottoData.length)return;
+    let box=document.getElementById('v16AiPanel');
+    if(!box){box=document.createElement('div');box.id='v16AiPanel';const companion=document.getElementById('companion');if(companion)companion.insertAdjacentElement('beforebegin',box);}
+    const s=v16TotalScores(selectedNums);s.reasons=v16RecommendationReasons(s,s.st,s.similar);
+    const simHtml=s.similar.map(x=>`<div class="v16-sim-row"><b>${x.row.round}회</b><span>${x.row.date}</span><div>${(x.row.numbers||[]).map(n=>tinyBall(n,selectedNums.includes(n)?'selected-ball':'')).join('')}${tinyBall(x.row.bonus,selectedNums.includes(x.row.bonus)?'selected-ball':'')}</div><strong>${x.score}%</strong></div>`).join('');
+    box.innerHTML=`<div class="combo-card v16-card"><div class="v16-head"><div><b>🎯 AI 신뢰도 분석 V2</b><p class="combo-guide">과거 회차 유사도, 최근추세, 동반번호, 번호균형을 종합한 참고용 점수입니다.</p></div><div class="v16-grade"><strong>${s.grade}</strong><span>${Math.round(s.total)}점</span></div></div><div class="v16-stars">${s.stars}</div>${v16Bar('당첨패턴 유사도',s.pattern,'역대 회차와 구조 비교')}${v16Bar('최근추세',s.trend,'최근 50·100회 출현 흐름')}${v16Bar('동반번호',s.companion,'번호 쌍의 동반출현')}${v16Bar('번호균형',s.balance,`합계 ${s.st.sum} · 홀짝 ${s.st.odd}:${s.st.even}`)}<div class="v16-mini"><b>위험도</b><span>${s.risks.join(' · ')}</span></div><div class="v16-mini"><b>추천 이유</b><ul>${s.reasons.map(r=>`<li>${r}</li>`).join('')}</ul></div><div class="v16-mini"><b>가장 비슷한 당첨회차 TOP 5</b>${simHtml}</div></div>`;
+  };
+  function injectV16Style(){if(document.getElementById('v16AiStyle'))return;const st=document.createElement('style');st.id='v16AiStyle';st.textContent=`
+    .v16-card{background:linear-gradient(180deg,#fffaf0,#ffffff)}
+    .v16-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.v16-grade{min-width:74px;border-radius:18px;background:#11366b;color:#fff;text-align:center;padding:10px 8px}.v16-grade strong{display:block;font-size:34px;line-height:1}.v16-grade span{font-size:12px;font-weight:900}.v16-stars{font-size:20px;color:#8a5b00;margin:6px 0 12px}.v16-score-row{display:grid;grid-template-columns:1fr 48px;gap:8px;align-items:center;border-top:1px solid #eef2f7;padding:10px 0}.v16-score-row div b{display:block;font-size:14px}.v16-score-row div span{display:block;font-size:12px;color:#667085}.v16-score-row strong{text-align:right;color:#11366b}.v16-score-row i{grid-column:1/3;height:9px;background:#edf2f7;border-radius:999px;overflow:hidden}.v16-score-row i em{display:block;height:100%;background:#11366b;border-radius:999px}.v16-mini{border-top:1px solid #eef2f7;padding:11px 0;font-size:13px;color:#344054}.v16-mini>b{display:block;color:#101828;margin-bottom:6px}.v16-mini ul{margin:0;padding-left:18px}.v16-mini li{margin:3px 0}.v16-sim-row{display:grid;grid-template-columns:54px 74px 1fr 40px;gap:4px;align-items:center;padding:7px 0;border-top:1px dashed #e7edf5}.v16-sim-row:first-of-type{border-top:0}.v16-sim-row span{font-size:11px;color:#667085}.v16-sim-row div{display:flex;gap:2px;flex-wrap:wrap}.v16-sim-row strong{text-align:right;color:#8a5b00}
+    @media(max-width:380px){.v16-sim-row{grid-template-columns:48px 1fr 36px}.v16-sim-row span{display:none}.v16-grade strong{font-size:28px}}
+  `;document.head.appendChild(st);}
+  const oldRenderAll=window.renderAll || renderAll;
+  window.renderAll=function(){injectV16Style();oldRenderAll();setTimeout(()=>{try{window.renderV16AIPanel&&window.renderV16AIPanel()}catch(e){console.error('v1.6 AI panel error',e)}},0);};
+  injectV16Style();
+})();
