@@ -35,6 +35,30 @@ function dreamNumberMap(keyword){
   while(nums.length<6){seed=(seed*9301+49297)%233280;const n=seed%45+1;if(!nums.includes(n))nums.push(n)}
   return nums.sort((a,b)=>a-b);
 }
+let lastDreamPreviewInfo=null;
+function rowsByLimit(limit){return limit==='all'?lottoData:lottoData.slice(0,Number(limit))}
+function dreamCandidateStats(base,candidate,rows){
+  let count=0, bases={};
+  rows.forEach(row=>{
+    const pool=[...new Set(rowPool(row).filter(Boolean))];
+    if(!pool.includes(candidate))return;
+    const baseHits=base.filter(n=>pool.includes(n));
+    if(!baseHits.length)return;
+    count++;
+    baseHits.forEach(b=>bases[b]=(bases[b]||0)+1);
+  });
+  return {count,pct:rows.length?Number(((count/rows.length)*100).toFixed(1)):0,bases};
+}
+function dreamTrendFor(base,candidate){
+  const r50=rowsByLimit(50), r100=rowsByLimit(100), rall=rowsByLimit('all');
+  const s50=dreamCandidateStats(base,candidate,r50);
+  const s100=dreamCandidateStats(base,candidate,r100);
+  const sall=dreamCandidateStats(base,candidate,rall);
+  let label='→ 안정', cls='trend-flat';
+  if(s50.pct>=s100.pct+3 && s100.pct>=sall.pct-1){label='↗ 상승';cls='trend-up'}
+  else if(s50.pct+3<=s100.pct || s100.pct+2<=sall.pct){label='↘ 약세';cls='trend-down'}
+  return {s50,s100,sall,label,cls};
+}
 function dreamCompanionPreview(keyword){
   const base=dreamNumberMap(keyword);
   const rows=sourceRows();
@@ -55,7 +79,8 @@ function dreamCompanionPreview(keyword){
     .map(x=>({
       ...x,
       pct: rows.length?Number(((x.count/rows.length)*100).toFixed(1)):0,
-      linked:Object.entries(x.bases).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([n])=>Number(n))
+      linked:Object.entries(x.bases).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([n])=>Number(n)),
+      trend:dreamTrendFor(base,x.n)
     }))
     .sort((a,b)=>b.count-a.count||a.n-b.n)
     .slice(0,8);
@@ -68,26 +93,76 @@ function dreamCompanionPreview(keyword){
 function renderDreamPreviewResult(info){
   const box=document.getElementById('dreamPreviewResult');
   if(!box||!info)return;
+  lastDreamPreviewInfo=info;
   const topText=info.top.length?info.top.slice(0,5).map(x=>`${ball(x.n,true)} <b>${x.count}회</b> · ${x.pct}% · 연결 ${x.linked.join(', ')}`).join('<br>'):'동반 보정 후보가 부족합니다.';
+  const trendText=info.top.length?info.top.slice(0,5).map(x=>{
+    const t=x.trend;
+    return `<div class="dream-trend-row"><div>${ball(x.n,true)} <b>${t.label}</b></div><div>50회 ${t.s50.pct}% · 100회 ${t.s100.pct}% · 전체 ${t.sall.pct}%</div></div>`;
+  }).join(''):'추세 분석 후보가 부족합니다.';
   box.innerHTML=`<div style="border-top:1px solid #d9ead3;margin-top:12px;padding-top:12px">
     <b>🌙 꿈해몽 AI Preview 결과</b>
-    <p class="combo-guide">기본 꿈번호를 먼저 만들고, ${info.range} 데이터에서 1단계 동반번호만 보정했습니다.</p>
+    <p class="combo-guide">기본 꿈번호를 먼저 만들고, ${info.range} 데이터에서 1단계 동반번호만 보정했습니다. 분석번호 입력칸은 자동 변경하지 않습니다.</p>
     <div class="combo-guide"><b>기본 꿈번호</b></div>
     <div class="combo-selected">${info.base.map(n=>ball(n,true)).join('')}</div>
     <div class="combo-guide" style="margin-top:8px"><b>동반 보정 후보 TOP</b></div>
     <p class="combo-guide">${topText}</p>
-    <div class="combo-guide"><b>최종 적용번호</b></div>
+    <div class="combo-guide" style="margin-top:8px"><b>Companion Trend 간단 분석</b></div>
+    <div class="combo-guide">${trendText}</div>
+    <div class="combo-guide" style="margin-top:8px"><b>Preview 추천번호</b></div>
     <div class="combo-selected">${info.final.map(n=>ball(n,true,info.addon.includes(n)?'selected-ball':'')).join('')}</div>
+    <div class="combo-btn-row" style="margin-top:10px"><button id="applyDreamPreviewBtn">이 번호 적용</button><button id="myNumberFilterBtn">내 번호 필터</button></div>
+    <div id="myNumberFilterResult"></div>
     <p class="combo-guide">※ Preview는 실험 기능입니다. 꿈의 원래 의미를 유지하기 위해 기본 꿈번호 4개 이상을 우선 보존하고, 동반번호 확장은 1단계에서 종료합니다.</p>
+  </div>`;
+  const applyBtn=document.getElementById('applyDreamPreviewBtn');
+  if(applyBtn)applyBtn.onclick=()=>applyDreamPreviewNumbers(info.final);
+  const filterBtn=document.getElementById('myNumberFilterBtn');
+  if(filterBtn)filterBtn.onclick=()=>renderMyNumberFilter(info);
+}
+function applyDreamPreviewNumbers(nums){
+  const final=[...new Set(nums.map(Number).filter(n=>n>=1&&n<=45))].sort((a,b)=>a-b).slice(0,6);
+  if(final.length<2){alert('적용할 번호가 부족합니다.');return}
+  document.getElementById('comboInput').value=final.join(' ');
+  selectedNums=final;
+  renderAll();
+  if(lastDreamPreviewInfo)renderDreamPreviewResult(lastDreamPreviewInfo);
+}
+function getUserInputPool(){
+  const raw=(document.getElementById('comboInput').value||'').trim();
+  return [...new Set(raw.split(/[\s,]+/).map(v=>Number(v)).filter(n=>Number.isInteger(n)&&n>=1&&n<=45))].sort((a,b)=>a-b);
+}
+function renderMyNumberFilter(info){
+  const box=document.getElementById('myNumberFilterResult');
+  if(!box||!info)return;
+  const pool=getUserInputPool();
+  if(!pool.length){box.innerHTML=`<p class="combo-guide" style="color:#b42318">내 번호 필터를 사용하려면 위 분석번호 입력칸에 후보 번호를 먼저 입력하세요.</p>`;return}
+  const sources=[...info.final,...info.base,...info.top.map(x=>x.n)];
+  const filtered=pool.filter(n=>sources.includes(n));
+  const topMap=new Map(info.top.map(x=>[x.n,x]));
+  const reason=n=>{
+    const r=[];
+    if(info.final.includes(n))r.push('Preview');
+    if(info.base.includes(n))r.push('기본꿈');
+    if(topMap.has(n))r.push('동반후보');
+    return r.join('+')||'필터';
+  };
+  box.innerHTML=`<div style="border-top:1px solid #e7edf5;margin-top:10px;padding-top:10px">
+    <b>🔎 내 번호 필터 1차 예상</b>
+    <p class="combo-guide">분석번호 입력칸의 번호 중 Preview 결과와 겹치는 번호만 추렸습니다.</p>
+    <div class="combo-guide"><b>내 번호 후보</b></div>
+    <div class="combo-selected">${pool.map(n=>ball(n,true)).join('')}</div>
+    <div class="combo-guide" style="margin-top:8px"><b>1차 예상</b></div>
+    <div class="combo-selected">${filtered.length?filtered.map(n=>ball(n,true,'selected-ball')).join(''):'<span class="combo-guide">겹치는 번호가 없습니다.</span>'}</div>
+    ${filtered.length?`<p class="combo-guide">${filtered.map(n=>`${n}번: ${reason(n)}`).join(' · ')}</p>`:''}
   </div>`;
 }
 function renderDreamBridge(){
   let box=document.getElementById('dreamBridge');
   if(!box){const first=document.querySelector('.combo-card');if(first){box=document.createElement('div');box.id='dreamBridge';first.insertAdjacentElement('afterend',box)}}
   if(!box)return;
-  if(!box.innerHTML)box.innerHTML=`<div class="combo-card" style="background:#f7fff4"><b>🌙 꿈해몽 연동</b><p class="combo-guide">꿈 키워드를 입력하면 추천번호를 조합분석에 바로 적용합니다.</p><input id="dreamComboInput" class="combo-input" placeholder="예: 물, 새, 돼지, 도자기"><label class="checkline"><input type="checkbox" id="dreamAiPreview" checked> 꿈해몽 AI Preview 적용 <span style="color:#667085">(기본번호 + 1단계 동반번호 보정)</span></label><button id="dreamComboBtn" class="combo-btn" style="background:#2f7d32">꿈해몽 번호 적용</button><div id="dreamPreviewResult"></div></div>`;
+  if(!box.innerHTML)box.innerHTML=`<div class="combo-card" style="background:#f7fff4"><b>🌙 꿈해몽 연동</b><p class="combo-guide">꿈 키워드를 입력하면 기본 꿈번호와 AI Preview 보정 결과를 별도 카드에 표시합니다.</p><input id="dreamComboInput" class="combo-input" placeholder="예: 물, 새, 돼지, 도자기"><label class="checkline"><input type="checkbox" id="dreamAiPreview" checked> 꿈해몽 AI Preview 적용 <span style="color:#667085">(기본번호 + 1단계 동반번호 보정)</span></label><button id="dreamComboBtn" class="combo-btn" style="background:#2f7d32">꿈해몽 Preview 보기</button><div id="dreamPreviewResult"></div></div>`;
   const btn=document.getElementById('dreamComboBtn');
-  if(btn&&!btn.dataset.bound){btn.dataset.bound='1';btn.onclick=()=>{const kw=(document.getElementById('dreamComboInput').value||'').trim();if(!kw){alert('꿈 키워드를 입력하세요.');return}const usePreview=document.getElementById('dreamAiPreview')?document.getElementById('dreamAiPreview').checked:true;let nums,preview=null;if(usePreview&&lottoData.length){preview=dreamCompanionPreview(kw);nums=preview.final}else{nums=dreamNumberMap(kw)}document.getElementById('comboInput').value=nums.join(' ');selectedNums=nums;renderAll();if(preview)renderDreamPreviewResult(preview)}}
+  if(btn&&!btn.dataset.bound){btn.dataset.bound='1';btn.onclick=()=>{const kw=(document.getElementById('dreamComboInput').value||'').trim();if(!kw){alert('꿈 키워드를 입력하세요.');return}const usePreview=document.getElementById('dreamAiPreview')?document.getElementById('dreamAiPreview').checked:true;if(usePreview&&lottoData.length){const preview=dreamCompanionPreview(kw);renderDreamPreviewResult(preview)}else{const base=dreamNumberMap(kw);lastDreamPreviewInfo={keyword:kw,base,top:[],addon:[],final:base,range:'기본',rows:0};renderDreamPreviewResult(lastDreamPreviewInfo)}}}
 }
 function learnedHitRate(nums){
   const rows=lottoData.map(row=>{const normal=nums.filter(n=>(row.numbers||[]).includes(n)).length,bonus=nums.includes(row.bonus);return{row,normal,bonus,total:normal+(bonus?1:0)}});
