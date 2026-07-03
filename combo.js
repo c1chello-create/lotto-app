@@ -186,7 +186,39 @@ function renderSavedCombos(){let box=document.getElementById('savedCombos');if(!
 function comboScoreParts(nums,data,allFreq){const companion=companionIndexScore(nums,data),balance=zoneBalanceScore(nums),oddEven=oddEvenScore(nums),recent=recentTrendScore(nums),long=longTrendScore(nums,allFreq),historical=historicalHitScore(nums,data.rows)*0.35,learned=learningScore(nums),total=companion+balance+oddEven+recent+long+historical+learned;return{companion,balance,oddEven,recent,long,historical,learned,total}}
 function combinations(arr,k){const out=[];function rec(start,pick){if(pick.length===k){out.push(pick);return}for(let i=start;i<arr.length;i++)rec(i+1,[...pick,arr[i]])}rec(0,[]);return out}
 function makeRankedCombos(data){const companionPool=data.top.map(x=>x.n).filter(n=>!selectedNums.includes(n)),allFreq=frequencyMap(lottoData);let candidates=[];if(selectedNums.length>=6){combinations(selectedNums,4).forEach(s=>{combinations(companionPool.slice(0,12),2).forEach(c=>candidates.push({nums:[...s,...c].sort((a,b)=>a-b),replace:2}))});combinations(selectedNums,5).forEach(s=>{companionPool.slice(0,12).forEach(c=>candidates.push({nums:[...s,c].sort((a,b)=>a-b),replace:1}))});combinations(selectedNums,3).forEach(s=>{combinations(companionPool.slice(0,10),3).forEach(c=>candidates.push({nums:[...s,...c].sort((a,b)=>a-b),replace:3}))})}else{const need=6-selectedNums.length;combinations(companionPool.slice(0,15),need).forEach(c=>candidates.push({nums:[...selectedNums,...c].sort((a,b)=>a-b),replace:need}))}const seen=new Set();candidates=candidates.filter(c=>{const key=c.nums.join(',');if(seen.has(key))return false;seen.add(key);return true});let scored=candidates.map(c=>({...c,parts:comboScoreParts(c.nums,data,allFreq)})).sort((a,b)=>b.parts.total-a.parts.total||a.nums.join('').localeCompare(b.nums.join(''))).slice(0,10);if(!scored.length)return[];const max=scored[0].parts.total||1,min=scored[scored.length-1].parts.total||0;return scored.map((x,i)=>{const trust=Math.round(62+((x.parts.total-min)/(max-min||1))*34);return{...x,rank:i+1,grade:gradeFromRank(i),trust:Math.max(55,Math.min(96,trust)),stars:starByTrust(trust)}})}
-function renderRankedCombos(data){const combos=makeRankedCombos(data);if(!combos.length)return`<div class="combo-card" style="margin:10px 0;background:#fff7e6"><b>🏆 AI 조합 랭킹</b><p class="combo-guide">추천조합을 만들 만큼 동반번호가 부족합니다. 전체 회차로 바꿔보세요.</p></div>`;return`<div class="combo-card" style="margin:10px 0;background:#fff7e6"><b>🏆 AI 조합 랭킹 TOP 10</b><p class="combo-guide">조합구조 학습: 과거에 잘 맞았던 구간분포, 홀짝비율, 합계범위, 번호간격 구조를 학습해 10개 조합을 만들었습니다.</p>${combos.map(c=>`<div style="border-top:1px solid #f2e6c9;padding:11px 0"><b style="color:#8a5b00">${c.rank}위 · ${c.grade} · 신뢰도 ${c.trust}%</b><span style="display:block;color:#8a5b00;font-size:13px;margin-top:2px">${c.stars}</span><div class="combo-selected">${c.nums.map(n=>ball(n,true,selectedNums.includes(n)?'selected-ball':'')).join('')}</div><p class="combo-guide">신뢰도 산식: 동반 ${Math.round(c.parts.companion)} + 균형 ${c.parts.balance} + 홀짝 ${c.parts.oddEven} + 추세 ${c.parts.recent+c.parts.long} + 장기 ${Math.round(c.parts.historical||0)} + 학습 ${Math.round(c.parts.learned||0)}</p>${renderComboReport(c.nums)}<div class="combo-btn-row" style="margin-top:8px"><button onclick="saveRecommendedCombo('${c.nums.join(',')}','${c.grade}',${c.trust})">저장</button><button onclick="analyzeSavedCombo('${c.nums.join(',')}')">적중분석</button></div></div>`).join('')}</div>`}
+
+function pctOf(value,max){return Math.max(0,Math.min(100,Math.round(((value||0)/(max||1))*100)))}
+function starsFromScore(p){if(p>=88)return'★★★★★';if(p>=75)return'★★★★☆';if(p>=60)return'★★★☆☆';if(p>=40)return'★★☆☆☆';return'★☆☆☆☆'}
+function scoreLabel(p){if(p>=88)return'매우 강함';if(p>=75)return'강함';if(p>=60)return'보통';if(p>=40)return'참고';return'약함'}
+function renderAIScoreRow(label,pct,note){return `<div class="ai-score-row"><span>${label}</span><b>${starsFromScore(pct)}</b><em>${scoreLabel(pct)} · ${pct}점</em>${note?`<small>${note}</small>`:''}</div>`}
+function renderAIScoreCard(c,maxes){
+  const companion=pctOf(c.parts.companion,maxes.companion);
+  const trend=pctOf((c.parts.recent||0)+(c.parts.long||0),maxes.trend);
+  const structure=pctOf((c.parts.balance||0)+(c.parts.oddEven||0),maxes.structure);
+  const longlearn=pctOf((c.parts.historical||0)+(c.parts.learned||0),maxes.longlearn);
+  const total=c.trust;
+  return `<div class="ai-score-card">
+    <div class="ai-score-head"><b>AI Score Card</b><span>${c.grade} · ${total}점</span></div>
+    ${renderAIScoreRow('동반성',companion,'동반번호·쌍번호 강도')}
+    ${renderAIScoreRow('추세',trend,'최근 흐름과 장기 출현')}
+    ${renderAIScoreRow('구조',structure,'구간균형·홀짝구성')}
+    ${renderAIScoreRow('장기학습',longlearn,'과거 적중·구조학습')}
+    <details class="ai-score-detail"><summary>AI 계산 근거 자세히 보기</summary>
+      <p class="combo-guide">원점수: 동반 ${Math.round(c.parts.companion)} · 균형 ${c.parts.balance} · 홀짝 ${c.parts.oddEven} · 추세 ${(c.parts.recent||0)+(c.parts.long||0)} · 장기 ${Math.round(c.parts.historical||0)} · 학습 ${Math.round(c.parts.learned||0)}</p>
+      <p class="combo-guide">표시 점수는 각 후보 조합 안에서 상대 비교하여 별점으로 변환한 값입니다. 당첨 확률이 아니라 분석 강도와 일관성 표시입니다.</p>
+    </details>
+  </div>`;
+}
+function renderRankedCombos(data){
+  const combos=makeRankedCombos(data);
+  if(!combos.length)return`<div class="combo-card" style="margin:10px 0;background:#fff7e6"><b>🏆 AI 조합 랭킹</b><p class="combo-guide">추천조합을 만들 만큼 동반번호가 부족합니다. 전체 회차로 바꿔보세요.</p></div>`;
+  const maxes={
+    companion:Math.max(...combos.map(c=>c.parts.companion||0),1),
+    trend:Math.max(...combos.map(c=>(c.parts.recent||0)+(c.parts.long||0)),1),
+    structure:Math.max(...combos.map(c=>(c.parts.balance||0)+(c.parts.oddEven||0)),1),
+    longlearn:Math.max(...combos.map(c=>(c.parts.historical||0)+(c.parts.learned||0)),1)
+  };
+  return`<div class="combo-card" style="margin:10px 0;background:#fff7e6"><b>🏆 AI 조합 랭킹 TOP 10</b><p class="combo-guide">개발자식 원점수 대신 AI Score Card로 동반성·추세·구조·장기학습을 직관적으로 표시합니다.</p>${combos.map(c=>`<div style="border-top:1px solid #f2e6c9;padding:11px 0"><b style="color:#8a5b00">${c.rank}위 · ${c.grade} · 종합 ${c.trust}점</b><div class="combo-selected">${c.nums.map(n=>ball(n,true,selectedNums.includes(n)?'selected-ball':'')).join('')}</div>${renderAIScoreCard(c,maxes)}${renderComboReport(c.nums)}<div class="combo-btn-row" style="margin-top:8px"><button onclick="saveRecommendedCombo('${c.nums.join(',')}','${c.grade}',${c.trust})">저장</button><button onclick="analyzeSavedCombo('${c.nums.join(',')}')">적중분석</button></div></div>`).join('')}</div>`}
 
 function actualHitProfile(nums,limit=null){
   const rows=limit?lottoData.slice(0,limit):lottoData;

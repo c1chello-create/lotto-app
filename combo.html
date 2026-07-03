@@ -22,13 +22,18 @@
     .companion-row{display:grid;grid-template-columns:48px 1fr 56px;gap:8px;align-items:center;border-top:1px solid #eef2f7;padding:9px 0}.companion-row:first-child{border-top:0}.companion-bar{height:9px;background:#eaf4ff;border-radius:10px;overflow:hidden}.companion-bar i{display:block;height:100%;background:#2d8cff;border-radius:10px}.companion-count{text-align:right;font-size:13px;font-weight:900;color:#11366b}
     .dream-trend-row{display:grid;grid-template-columns:90px 1fr;gap:6px;align-items:center;border-top:1px solid #eef2f7;padding:6px 0}.dream-trend-row:first-child{border-top:0}
     .status-msg{margin:14px 12px;color:#667085;font-size:14px}
+    .ai-score-card{background:#fffaf0;border:1px solid #f2d99b;border-radius:14px;padding:10px;margin:10px 0}
+    .ai-score-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;color:#8a5b00}.ai-score-head span{font-weight:900}
+    .ai-score-row{display:grid;grid-template-columns:70px 82px 1fr;gap:6px;align-items:center;padding:6px 0;border-top:1px solid #f5e6bd}.ai-score-row:first-of-type{border-top:0}
+    .ai-score-row span{font-size:13px;font-weight:900;color:#475467}.ai-score-row b{color:#8a5b00;letter-spacing:1px}.ai-score-row em{font-style:normal;font-size:12px;color:#344054}.ai-score-row small{grid-column:2/4;color:#667085;font-size:11px}
+    .ai-score-detail{margin-top:8px;border-top:1px dashed #e8c875;padding-top:8px}.ai-score-detail summary{cursor:pointer;font-weight:900;color:#8a5b00;font-size:13px}
   </style>
 </head>
 <body>
 <div class="combo-wrap">
   <header class="combo-top">
     <div class="status"><span>9:41</span><span>▮▮▮ Wi‑Fi 100</span></div>
-    <div class="combo-titlebar"><a href="index.html">‹</a><div>조합분석 v1.6.2</div><span>🍀</span></div>
+    <div class="combo-titlebar"><a href="index.html">‹</a><div>조합분석 v1.6.2-Score</div><span>🍀</span></div>
   </header>
 
   <div class="combo-card">
@@ -45,13 +50,13 @@
   </div>
 
   <div id="status" class="status-msg">데이터를 불러오는 중입니다...</div>
-  <div class="combo-card" style="background:#f8fbff"><b>📌 버전 히스토리</b><p class="combo-guide">v1.6.2 Stable · Build 20260703-01</p><p class="combo-guide">입력창 유지 · AI Preview 결과 분리 · Companion Trend 간단 분석 · 내 번호 필터 1차 예상</p></div>
+  <div class="combo-card" style="background:#f8fbff"><b>📌 버전 히스토리</b><p class="combo-guide">v1.6.2 Stable · Build 20260703-02</p><p class="combo-guide">입력창 유지 · Companion Trend · 내 번호 필터 1차 · AI Score Card</p></div>
   <div id="summary"></div>
   <div id="companion"></div>
   <div class="combo-section-title"><b>조합별 출현 이력</b></div>
   <div class="history-table-head"><span>회차</span><span>추첨일</span><span>당첨번호</span><span>보너스</span><span></span></div>
   <div id="history"></div>
 </div>
-<script src="combo.js?v=v162-stable-20260703-01"></script>
+<script src="combo.js?v=v162-stable-20260703-02"></script>
 </body>
 </html>
