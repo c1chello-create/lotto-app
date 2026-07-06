@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Dream Chain Test v1.6.3-Auto</title>
+<style>
+:root{--navy:#213f78;--green:#347d39;--bg:#f3f6fb;--card:#fff;--soft:#f6fff2;--text:#152033;--muted:#667085;--line:#dde4ef}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text)}
+.header{position:sticky;top:0;background:#fff;border-bottom:1px solid #e6ebf3;text-align:center;padding:22px 8px;font-size:25px;font-weight:900;z-index:3}
+.wrap{max-width:760px;margin:0 auto;padding:16px 14px 70px}
+.card{background:var(--card);border:1px solid #e1e7f0;border-radius:24px;padding:22px;margin:18px 0;box-shadow:0 2px 8px rgba(20,40,80,.04)}
+.soft{background:var(--soft)}
+h2{margin:0 0 14px;font-size:24px}
+h3{margin:18px 0 10px;font-size:21px}
+p{color:var(--muted);line-height:1.55;font-size:17px}
+label{display:block;margin:12px 0 8px;font-weight:800;color:#374151}
+input,select{width:100%;font-size:22px;padding:15px 16px;border:2px solid #d1d8e4;border-radius:16px;background:#fff}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+button{width:100%;border:0;border-radius:18px;padding:17px;font-size:21px;font-weight:900;background:var(--navy);color:white;margin-top:14px}
+.green{background:var(--green)}
+.ball{display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:50%;color:#fff;font-weight:900;font-size:21px;margin:5px 5px 5px 0;box-shadow:0 4px 10px rgba(0,0,0,.18)}
+.b1{background:#2f73c8}.b2{background:#e5b92a}.b3{background:#d84338}.b4{background:#374151}.b5{background:#4c984b}
+.gold{outline:5px solid #f8e388}
+.table{width:100%;border-collapse:collapse;margin-top:10px}
+.table th,.table td{border-bottom:1px solid #e5eaf2;padding:10px 3px;text-align:left;color:#475467;font-size:15px}
+.badge{display:inline-block;padding:6px 10px;border-radius:999px;background:#eef2ff;color:#253b6e;font-weight:900;font-size:14px}
+.warn{background:#fff8dc;border:1px solid #efd77a;border-radius:16px;padding:13px;color:#6b5700}
+.summary{background:#f9fafb;border:1px solid #e5e7eb;border-radius:18px;padding:14px;margin-top:12px}
+hr{border:0;border-top:1px solid #dfe7d8;margin:20px 0}
+.mini{font-size:14px;color:#667085}
+</style>
+</head>
+<body>
+<div class="header">🍀 Dream Chain Test v1.6.3-Auto</div>
+<div class="wrap">
+  <div class="card">
+    <h2>분석할 번호 입력</h2>
+    <p>이번 버전은 열자마자 결과가 자동 표시됩니다. 버튼을 누르면 1차·2차·3차 결과가 다시 계산됩니다.</p>
+    <label>분석번호</label>
+    <input id="nums" value="38 13 14 18">
+    <div class="row">
+      <div><label>분석 범위</label><select id="range"><option value="50">최근 50회</option><option value="100">최근 100회</option><option value="all">전체</option></select></div>
+      <div><label>체인 단계</label><select id="depth"><option value="1">1차</option><option value="2">2차</option><option value="3" selected>3차</option></select></div>
+    </div>
+    <button onclick="runTest()">Dream Chain 테스트</button>
+  </div>
+  <div class="card soft">
+    <h2>🌙 꿈해몽 연동</h2>
+    <p>키워드를 넣으면 기본 꿈번호를 만들고, 1차·2차·3차 보정 결과를 바로 비교합니다.</p>
+    <label>꿈 키워드</label>
+    <input id="dream" value="양초">
+    <button class="green" onclick="runDream()">꿈해몽 Chain Preview 보기</button>
+  </div>
+  <div id="result"></div>
+  <div class="card"><h2>판단 기준</h2><div class="warn">2차·3차에서도 유지되는 번호는 강한 후보입니다. 단계가 깊어질수록 계속 바뀌면 1차 보정만 유지하는 것이 좋습니다.</div></div>
+</div>
+<script>
+let lottoData=[
+{round:1231,date:"2026-06-27",numbers:[13,14,21,37,38,45],bonus:28},
+{round:1230,date:"2026-06-20",numbers:[13,27,28,31,38,44],bonus:14},
+{round:1229,date:"2026-06-13",numbers:[9,14,15,27,28,45],bonus:38},
+{round:1228,date:"2026-06-06",numbers:[13,15,21,28,31,37],bonus:45},
+{round:1227,date:"2026-05-30",numbers:[14,18,25,27,31,38],bonus:13},
+{round:1226,date:"2026-05-23",numbers:[9,13,21,25,28,45],bonus:37},
+{round:1225,date:"2026-05-16",numbers:[13,14,27,28,37,38],bonus:9},
+{round:1224,date:"2026-05-09",numbers:[15,18,27,31,38,45],bonus:14},
+{round:1223,date:"2026-05-02",numbers:[9,13,14,25,28,37],bonus:21},
+{round:1222,date:"2026-04-25",numbers:[14,15,21,27,38,45],bonus:28},
+{round:1221,date:"2026-04-18",numbers:[13,18,25,28,31,37],bonus:14},
+{round:1220,date:"2026-04-11",numbers:[9,14,21,27,31,45],bonus:13},
+{round:1219,date:"2026-04-04",numbers:[13,14,18,27,31,44],bonus:28},
+{round:1218,date:"2026-03-28",numbers:[9,15,21,28,37,45],bonus:13},
+{round:1217,date:"2026-03-21",numbers:[14,18,25,27,38,45],bonus:31},
+{round:1216,date:"2026-03-14",numbers:[13,21,25,28,31,38],bonus:14},
+{round:1215,date:"2026-03-07",numbers:[9,13,14,27,37,45],bonus:28},
+{round:1214,date:"2026-02-28",numbers:[15,18,21,27,31,38],bonus:45},
+{round:1213,date:"2026-02-21",numbers:[13,14,25,28,37,44],bonus:9},
+{round:1212,date:"2026-02-14",numbers:[9,14,21,27,31,38],bonus:13}
+];
+const dreamMap={"양초":[13,14,21,37,38,45],"촛불":[13,14,21,37,38,45],"물":[1,7,13,21,33,38],"새":[9,14,27,31,38,45],"도자기":[4,13,18,27,28,37],"바다":[7,13,21,28,37,45],"옷":[5,14,18,25,31,38],"불":[9,18,21,27,37,45]};
+async function loadRealData(){
+  try{
+    const r=await fetch("data/lotto.json?ts="+Date.now());
+    if(r.ok){
+      const d=await r.json();
+      if(Array.isArray(d)&&d.length>10) lottoData=d;
+    }
+  }catch(e){}
+  runDream(false);
+}
+function parseNums(v){return [...new Set((v.match(/\\d+/g)||[]).map(Number).filter(n=>n>=1&&n<=45))]}
+function cls(n){return n<=10?"b2":n<=20?"b1":n<=30?"b3":n<=40?"b4":"b5"}
+function balls(a,g=new Set()){return a.map(n=>`<span class="ball ${cls(n)} ${g.has(n)?"gold":""}">${n}</span>`).join("")}
+function rangeData(r){let s=[...lottoData].sort((a,b)=>b.round-a.round);return r==="all"?s:s.slice(0,+r)}
+function drawNums(d){return [...d.numbers,d.bonus]}
+function comp(seedNums,data){
+  let seed=new Set(seedNums), score={}, links={}, rounds={};
+  data.forEach(d=>{
+    let ns=drawNums(d), hit=ns.filter(n=>seed.has(n));
+    if(hit.length){
+      ns.forEach(n=>{
+        if(!seed.has(n)){
+          score[n]=(score[n]||0)+hit.length;
+          links[n]=links[n]||new Set();
+          rounds[n]=rounds[n]||[];
+          hit.forEach(h=>links[n].add(h));
+          rounds[n].push(d.round);
+        }
+      });
+    }
+  });
+  return Object.keys(score).map(n=>({n:+n,score:score[n],links:[...links[n]].sort((a,b)=>a-b),rounds:rounds[n]})).sort((a,b)=>b.score-a.score||a.n-b.n);
+}
+function preview(base,c){
+  let out=[...base];
+  c.forEach(x=>{if(out.length<6&&!out.includes(x.n))out.push(x.n)});
+  return out.slice(0,6).sort((a,b)=>a-b);
+}
+function test(base,range,depth){
+  let data=rangeData(range), stages=[], current=[...base].sort((a,b)=>a-b);
+  for(let i=1;i<=depth;i++){
+    let c=comp(current,data).slice(0,8), p=preview(base,c);
+    stages.push({i,seed:current,comp:c,preview:p});
+    current=p;
+  }
+  return stages;
+}
+function stable(st){
+  if(!st.length)return[];
+  let s=new Set(st[0].preview);
+  st.slice(1).forEach(x=>s=new Set(x.preview.filter(n=>s.has(n))));
+  return [...s].sort((a,b)=>a-b);
+}
+function verdict(st){
+  let keep=stable(st), last=st[st.length-1].preview;
+  let msg=keep.length>=5?"3차까지 흔들림이 적어 보정 효과가 안정적입니다.":keep.length>=4?"핵심 번호는 유지되고 일부만 교체됩니다. 테스트 가치가 있습니다.":"단계별 변동이 큽니다. 1차 보정 중심이 더 안전합니다.";
+  return {keep,last,msg};
+}
+function render(st,base,title,scroll){
+  let v=verdict(st);
+  let html=`<div class="card soft"><h2>${title}</h2><p>기본 번호</p>${balls(base)}<div class="summary"><b>자동 판정:</b><p>${v.msg}</p><p><span class="badge">3차까지 유지</span></p>${balls(v.keep,new Set(v.keep))}</div>`;
+  st.forEach(x=>{
+    let added=x.preview.filter(n=>!base.includes(n));
+    html+=`<hr><h3>${x.i}차 보정 Preview</h3>${balls(x.preview,new Set(added))}<p class="mini">노란 테두리: 보정 추가 번호</p><table class="table"><tr><th>후보</th><th>점수</th><th>연결</th><th>회차</th></tr>${x.comp.slice(0,5).map(y=>`<tr><td>${balls([y.n])}</td><td>${y.score}</td><td>${y.links.join(", ")}</td><td>${y.rounds.slice(0,4).join(", ")}</td></tr>`).join("")}</table>`;
+  });
+  html+=`<hr><h3>최종 실험 Preview</h3>${balls(v.last)}<p>이 결과는 예측 확정값이 아니라, 1차·2차·3차 동반번호 보정이 얼마나 흔들리는지 보기 위한 비교값입니다.</p></div>`;
+  document.getElementById("result").innerHTML=html;
+  if(scroll) setTimeout(()=>document.getElementById("result").scrollIntoView({behavior:"smooth",block:"start"}),100);
+}
+function runTest(){let n=parseNums(document.getElementById("nums").value);if(n.length<2){alert("2개 이상 입력하세요.");return}render(test(n,document.getElementById("range").value,+document.getElementById("depth").value),n,"🔍 Dream Chain Test 결과",true)}
+function runDream(scroll=true){
+  let k=document.getElementById("dream").value.trim();
+  let found=Object.keys(dreamMap).find(x=>k.includes(x));
+  let base=dreamMap[k]||dreamMap[found]||dreamMap["양초"];
+  document.getElementById("nums").value=base.join(" ");
+  render(test(base,document.getElementById("range").value,+document.getElementById("depth").value),base,`🌙 "${k}" Dream Chain Preview 결과`,scroll);
+}
+window.addEventListener("DOMContentLoaded",loadRealData);
+</script>
+</body>
+</html>
