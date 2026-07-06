@@ -655,3 +655,293 @@ async function loadData(){try{const res=await fetch('./data/lotto.json?ts='+Date
 function addModeButtons(){const box=document.querySelector('.combo-btn-row');if(!box||document.getElementById('modePartial'))return;const wrap=document.createElement('div');wrap.className='combo-btn-row';wrap.innerHTML=`<button id="modePartial" class="active">부분일치</button><button id="modeExact">완전일치</button>`;box.insertAdjacentElement('afterend',wrap);$('modePartial').onclick=()=>{matchMode='partial';$('modePartial').classList.add('active');$('modeExact').classList.remove('active');renderAll()};$('modeExact').onclick=()=>{matchMode='exact';$('modeExact').classList.add('active');$('modePartial').classList.remove('active');renderAll()}}
 function bindEvents(){setTimeout(renderDreamBridge,0);$('analyzeBtn').onclick=()=>{const nums=parseNums();if(!nums)return;selectedNums=nums;renderAll()};document.querySelectorAll('.range-btn').forEach(btn=>{btn.onclick=()=>{document.querySelectorAll('.range-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');matchRange=btn.dataset.range;renderAll()}});$('includeBonus').onchange=()=>renderAll();addModeButtons()}
 injectHistoryWideStyle();bindEvents();loadData();
+
+
+/* =========================================================
+   Dream Chain Lab v0.2 + AI 판단
+   AI Core v0.9 사전 실험 모듈
+========================================================= */
+
+function dreamChainCompanionFromSeed(seedNums, rows){
+  const counts = {};
+  for(let i=1;i<=45;i++) counts[i] = {n:i,count:0,bases:{}};
+
+  rows.forEach(row=>{
+    const pool = [...new Set(rowPool(row).filter(Boolean))];
+    const seedHits = seedNums.filter(n=>pool.includes(n));
+    if(!seedHits.length) return;
+
+    pool.forEach(n=>{
+      if(seedNums.includes(n)) return;
+      counts[n].count++;
+      seedHits.forEach(b=>counts[n].bases[b]=(counts[n].bases[b]||0)+1);
+    });
+  });
+
+  return Object.values(counts)
+    .filter(x=>x.count>0 && !seedNums.includes(x.n))
+    .map(x=>({
+      ...x,
+      pct: rows.length ? Number(((x.count/rows.length)*100).toFixed(1)) : 0,
+      linked: Object.entries(x.bases).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([n])=>Number(n))
+    }))
+    .sort((a,b)=>b.count-a.count || a.n-b.n)
+    .slice(0,8);
+}
+
+function dreamChainMakePreview(base, top){
+  const addon = top.slice(0,2).map(x=>x.n);
+  let final = [...base.slice(0,4), ...addon];
+
+  [...base, ...top.map(x=>x.n)].forEach(n=>{
+    if(final.length<6 && !final.includes(n)) final.push(n);
+  });
+
+  return {
+    addon,
+    final: [...new Set(final)].slice(0,6).sort((a,b)=>a-b)
+  };
+}
+
+function dreamChainBuild(base, rows){
+  const stages = [];
+  let seed = [...base];
+
+  for(let step=1; step<=3; step++){
+    const top = dreamChainCompanionFromSeed(seed, rows);
+    const made = dreamChainMakePreview(base, top);
+    stages.push({
+      step,
+      seed:[...seed].sort((a,b)=>a-b),
+      top,
+      addon:made.addon,
+      final:made.final
+    });
+    seed = made.final;
+  }
+
+  return stages;
+}
+
+function dreamChainStableNumbers(stages){
+  if(!stages || !stages.length) return [];
+  let keep = new Set(stages[0].final);
+  stages.slice(1).forEach(s=>{
+    keep = new Set(s.final.filter(n=>keep.has(n)));
+  });
+  return [...keep].sort((a,b)=>a-b);
+}
+
+function dreamChainChangedNumbers(stages){
+  if(!stages || stages.length<2) return [];
+  const changed = [];
+  for(let i=1;i<stages.length;i++){
+    const prev = new Set(stages[i-1].final);
+    const curr = new Set(stages[i].final);
+    const out = [...prev].filter(n=>!curr.has(n));
+    const inn = [...curr].filter(n=>!prev.has(n));
+    if(out.length || inn.length) changed.push({from:i,to:i+1,out,inn});
+  }
+  return changed;
+}
+
+function dreamChainSimilarity(a,b){
+  if(!a || !b || !a.length || !b.length) return 0;
+  const s = new Set(a);
+  const hit = b.filter(n=>s.has(n)).length;
+  return Math.round((hit / Math.max(a.length,b.length)) * 100);
+}
+
+function dreamChainScore(stages){
+  if(!stages || stages.length<3) return {avg:0,stable:0,stars:'★☆☆☆☆',s12:0,s23:0};
+  const s12 = dreamChainSimilarity(stages[0].final, stages[1].final);
+  const s23 = dreamChainSimilarity(stages[1].final, stages[2].final);
+  const stable = dreamChainStableNumbers(stages).length;
+  const avg = Math.round((s12+s23)/2);
+  let stars = '★☆☆☆☆';
+  if(avg>=90 && stable>=5) stars='★★★★★';
+  else if(avg>=75 && stable>=4) stars='★★★★☆';
+  else if(avg>=60 && stable>=4) stars='★★★☆☆';
+  else if(avg>=45) stars='★★☆☆☆';
+  return {avg,stable,stars,s12,s23};
+}
+
+function dreamAiJudge(info){
+  const chain = info.chain || [];
+  const score = dreamChainScore(chain);
+  const top = info.top || [];
+  const upCount = top.slice(0,5).filter(x=>x.trend && x.trend.label.includes('상승')).length;
+  const downCount = top.slice(0,5).filter(x=>x.trend && x.trend.label.includes('약세')).length;
+
+  let title = '1차 보정 유지 권장';
+  let desc = '2차·3차로 갈수록 결과가 흔들릴 수 있어 현재는 1차 Preview 중심으로 보는 것이 안전합니다.';
+  let pick = info.final;
+
+  if(chain.length>=3 && score.stable>=5 && score.avg>=80){
+    title = '3차 Chain 관찰 가치 높음';
+    desc = '3차까지 유지번호가 많고 단계 간 일치율이 높습니다. Chain 보정을 AI Core 후보로 반영할 가치가 있습니다.';
+    pick = chain[2].final;
+  }else if(chain.length>=2 && score.stable>=4 && score.avg>=60){
+    title = '2차 보정 우선 검토';
+    desc = '핵심 번호는 유지되면서 일부 후보가 교체됩니다. 3차보다 2차까지의 보정이 현실적입니다.';
+    pick = chain[1].final;
+  }
+
+  if(downCount>=3 && score.avg<75){
+    title = '1차 보정 유지 권장';
+    desc = '상위 동반 후보에 약세가 많고 Chain 안정도가 충분하지 않습니다. 1차 Preview를 유지하는 편이 좋습니다.';
+    pick = info.final;
+  }
+
+  if(upCount>=2 && score.stable>=4){
+    desc += ' 특히 상승 후보가 함께 확인되어 실험 가치는 더 높습니다.';
+  }
+
+  return {
+    title,
+    desc,
+    pick:[...new Set(pick)].slice(0,6).sort((a,b)=>a-b),
+    stars:score.stars,
+    stability:score.avg,
+    stableCount:score.stable
+  };
+}
+
+function renderDreamChainLab(info){
+  if(!info || !info.chain || !info.chain.length) return '';
+  const stable = dreamChainStableNumbers(info.chain);
+  const changed = dreamChainChangedNumbers(info.chain);
+  const score = dreamChainScore(info.chain);
+  const judge = dreamAiJudge(info);
+
+  const stageHtml = info.chain.map((s,idx)=>{
+    const prev = idx===0 ? info.base : info.chain[idx-1].final;
+    const sim = dreamChainSimilarity(prev,s.final);
+    const added = new Set(s.final.filter(n=>!info.base.includes(n)));
+    const topText = s.top.length
+      ? s.top.slice(0,5).map(x=>`${ball(x.n,true)} <b>${x.count}회</b> · ${x.pct}% · 연결 ${x.linked.join(', ')}`).join('<br>')
+      : '후보 부족';
+
+    return `<div class="chain-stage">
+      <div class="chain-head"><b>${s.step}차 Chain Preview</b><span>${sim}% 일치</span></div>
+      <div class="combo-selected">${s.final.map(n=>ball(n,true,added.has(n)?'selected-ball':'')).join('')}</div>
+      <p class="combo-guide">${topText}</p>
+    </div>`;
+  }).join('');
+
+  const changedText = changed.length
+    ? changed.map(c=>`${c.from}차→${c.to}차: 제외 ${c.out.join(', ')||'-'} / 추가 ${c.inn.join(', ')||'-'}`).join('<br>')
+    : '단계별 교체가 거의 없습니다.';
+
+  return `<div id="dreamChainLab" style="border-top:1px solid #d9ead3;margin-top:14px;padding-top:14px">
+    <b>🧪 Dream Chain Lab v0.2</b>
+    <p class="combo-guide">1차·2차·3차 동반번호 보정 결과를 비교해 어느 단계까지 의미가 있는지 검증합니다.</p>
+
+    <div class="combo-card" style="margin:10px 0;background:#fffaf0;border-color:#f2d99b">
+      <b>AI 판단 · ${judge.stars}</b>
+      <p class="combo-guide"><b>${judge.title}</b></p>
+      <p class="combo-guide">${judge.desc}</p>
+      <p class="combo-guide">Chain 안정도 ${judge.stability}% · 3차까지 유지 ${judge.stableCount}개</p>
+      <div class="combo-guide"><b>AI 최종 판단 번호</b></div>
+      <div class="combo-selected">${judge.pick.map(n=>ball(n,true,'selected-ball')).join('')}</div>
+    </div>
+
+    <div class="combo-guide"><b>3차까지 유지번호</b></div>
+    <div class="combo-selected">${stable.length?stable.map(n=>ball(n,true,'selected-ball')).join(''):'<span class="combo-guide">유지번호 없음</span>'}</div>
+
+    ${stageHtml}
+
+    <div class="combo-guide" style="margin-top:8px"><b>교체 흐름</b></div>
+    <p class="combo-guide">${changedText}</p>
+    <p class="combo-guide">Chain 일치율: 1차→2차 ${score.s12}% · 2차→3차 ${score.s23}%</p>
+  </div>`;
+}
+
+function dreamCompanionPreview(keyword){
+  const base=dreamNumberMap(keyword);
+  const rows=sourceRows();
+  const counts={};
+  for(let i=1;i<=45;i++)counts[i]={n:i,count:0,bases:{}};
+  rows.forEach(row=>{
+    const pool=[...new Set(rowPool(row).filter(Boolean))];
+    const baseHits=base.filter(n=>pool.includes(n));
+    if(!baseHits.length)return;
+    pool.forEach(n=>{
+      if(base.includes(n))return;
+      counts[n].count++;
+      baseHits.forEach(b=>counts[n].bases[b]=(counts[n].bases[b]||0)+1);
+    });
+  });
+  const top=Object.values(counts)
+    .filter(x=>x.count>0&&!base.includes(x.n))
+    .map(x=>({
+      ...x,
+      pct: rows.length?Number(((x.count/rows.length)*100).toFixed(1)):0,
+      linked:Object.entries(x.bases).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([n])=>Number(n)),
+      trend:dreamTrendFor(base,x.n)
+    }))
+    .sort((a,b)=>b.count-a.count||a.n-b.n)
+    .slice(0,8);
+  const addon=top.slice(0,2).map(x=>x.n);
+  let final=[...base.slice(0,4),...addon];
+  [...base,...top.map(x=>x.n)].forEach(n=>{if(final.length<6&&!final.includes(n))final.push(n)});
+  final=[...new Set(final)].slice(0,6).sort((a,b)=>a-b);
+
+  const chain = dreamChainBuild(base, rows);
+
+  return {keyword,base,top,addon,final,chain,range:matchRange==='all'?'전체':`최근 ${matchRange}회`,rows:rows.length};
+}
+
+function renderDreamPreviewResult(info){
+  const box=document.getElementById('dreamPreviewResult');
+  if(!box||!info)return;
+  lastDreamPreviewInfo=info;
+  const topText=info.top.length?info.top.slice(0,5).map(x=>`${ball(x.n,true)} <b>${x.count}회</b> · ${x.pct}% · 연결 ${x.linked.join(', ')}`).join('<br>'):'동반 보정 후보가 부족합니다.';
+  const trendText=info.top.length?info.top.slice(0,5).map(x=>{
+    const t=x.trend;
+    return `<div class="dream-trend-row"><div>${ball(x.n,true)} <b>${t.label}</b></div><div>50회 ${t.s50.pct}% · 100회 ${t.s100.pct}% · 전체 ${t.sall.pct}%</div></div>`;
+  }).join(''):'추세 분석 후보가 부족합니다.';
+  const chainHtml = renderDreamChainLab(info);
+  const judge = dreamAiJudge(info);
+
+  box.innerHTML=`<div style="border-top:1px solid #d9ead3;margin-top:12px;padding-top:12px">
+    <b>🌙 꿈해몽 AI Preview 결과</b>
+    <p class="combo-guide">기본 꿈번호를 먼저 만들고, ${info.range} 데이터에서 1단계 동반번호를 보정했습니다. 분석번호 입력칸은 자동 변경하지 않습니다.</p>
+    <div class="combo-guide"><b>기본 꿈번호</b></div>
+    <div class="combo-selected">${info.base.map(n=>ball(n,true)).join('')}</div>
+    <div class="combo-guide" style="margin-top:8px"><b>동반 보정 후보 TOP</b></div>
+    <p class="combo-guide">${topText}</p>
+    <div class="combo-guide" style="margin-top:8px"><b>Companion Trend 간단 분석</b></div>
+    <div class="combo-guide">${trendText}</div>
+    <div class="combo-guide" style="margin-top:8px"><b>Preview 추천번호</b></div>
+    <div class="combo-selected">${info.final.map(n=>ball(n,true,info.addon.includes(n)?'selected-ball':'')).join('')}</div>
+
+    ${chainHtml}
+
+    <div class="combo-btn-row" style="margin-top:10px"><button id="applyDreamPreviewBtn">Preview 번호 적용</button><button id="applyDreamAiJudgeBtn">AI 판단 번호 적용</button></div>
+    <div class="combo-btn-row" style="margin-top:10px"><button id="myNumberFilterBtn">내 번호 필터</button></div>
+    <div id="myNumberFilterResult"></div>
+    <p class="combo-guide">※ Preview와 Chain은 실험 기능입니다. 꿈의 원래 의미를 유지하기 위해 기본 꿈번호 4개 이상을 우선 보존합니다.</p>
+  </div>`;
+
+  const applyBtn=document.getElementById('applyDreamPreviewBtn');
+  if(applyBtn)applyBtn.onclick=()=>applyDreamPreviewNumbers(info.final);
+
+  const judgeBtn=document.getElementById('applyDreamAiJudgeBtn');
+  if(judgeBtn)judgeBtn.onclick=()=>applyDreamPreviewNumbers(judge.pick);
+
+  const filterBtn=document.getElementById('myNumberFilterBtn');
+  if(filterBtn)filterBtn.onclick=()=>renderMyNumberFilter(info);
+}
+
+(function injectDreamChainStyle(){
+  if(document.getElementById('dreamChainLabV02Style'))return;
+  const st=document.createElement('style');
+  st.id='dreamChainLabV02Style';
+  st.textContent=`
+    .chain-stage{border-top:1px solid #e5eadf;margin-top:12px;padding-top:10px}
+    .chain-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+    .chain-head span{background:#eef2ff;color:#11366b;border-radius:999px;padding:5px 8px;font-size:12px;font-weight:900;white-space:nowrap}
+  `;
+  document.head.appendChild(st);
+})();
