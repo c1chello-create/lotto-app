@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>동반패턴 분석 v0.3 🍀</title>
+<title>동반패턴 분석 v0.4 🍀</title>
 <link rel="stylesheet" href="style.css">
 <style>
 body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#101828}
@@ -34,6 +34,15 @@ body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"S
 .replay-grid div{background:#fff;border:1px solid #e7edf5;border-radius:12px;padding:10px;text-align:center}
 .replay-grid b{display:block;color:#11366b;font-size:17px}.replay-grid span{font-size:12px;color:#667085}
 
+
+.score-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
+.score-grid div{background:#fff;border:1px solid #e7edf5;border-radius:12px;padding:10px;text-align:center}
+.score-grid b{display:block;color:#11366b;font-size:17px}.score-grid span{font-size:12px;color:#667085}
+.score-line{display:grid;grid-template-columns:44px 1fr 54px;gap:8px;align-items:center;border-top:1px solid #eef2f7;padding:8px 0}
+.score-line:first-child{border-top:0}
+.replay-num-box{background:#f7fff4;border:1px solid #d9ead3;border-radius:14px;padding:10px;margin-top:10px}
+.contribution{font-size:12px;color:#8a5b00;font-weight:900}
+
 @media(max-width:430px){.tabs a{font-size:13px}.ball{width:38px;height:38px;font-size:17px}.small-ball{width:28px;height:28px;font-size:12px}.rank{grid-template-columns:38px 1fr 46px}}
 </style>
 </head>
@@ -41,7 +50,7 @@ body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"S
 <div class="wrap">
 <header class="top">
 <div class="status"><span>9:41</span><span>▮▮▮ Wi‑Fi 100</span></div>
-<div class="titlebar"><a href="index.html">‹</a><div>동반패턴 분석 v0.3</div><span>🍀</span></div>
+<div class="titlebar"><a href="index.html">‹</a><div>동반패턴 분석 v0.4</div><span>🍀</span></div>
 <nav class="tabs"><a class="active" href="pattern.html">패턴 분석</a><a href="index.html">상세 분석</a><a href="combo.html">조합 분석</a><a href="#">그래프 분석</a></nav>
 </header>
 <div class="card">
@@ -180,6 +189,123 @@ function renderAiScorePreview(candidates,groups,samples,mode){
      <b>${grade}등급 후보</b>
      <p class="muted">패턴성 ${replay}% · 번호군 강도 ${pairStrong}회 · 흐름 후보 ${flowCount}개</p>
      <div class="balls">${top.map(n=>ball(n,false,'selected-ball')).join('')}</div>
+   </div>
+ </div>`;
+}
+
+
+function replayRateForCandidates(samples,candidates,mode){
+ const picks=candidates.slice(0,6).map(x=>x.n);
+ if(!picks.length)return [];
+ const gaps = mode==='series3' ? gapsForSeries('series3',samples.length) : gapsForSeries('series2',samples.length);
+ const out=[];
+ gaps.slice(0,12).forEach(g=>{
+   let checks=0,hits=0,hitNums={};
+   picks.forEach(n=>hitNums[n]=0);
+   for(let i=0;i<samples.length;i++){
+     const target=samples[i+g];
+     if(!target)continue;
+     checks++;
+     const p=pool(target.row);
+     const local=picks.filter(n=>p.includes(n));
+     if(local.length){
+       hits++;
+       local.forEach(n=>hitNums[n]++);
+     }
+   }
+   const rate=checks?Math.round(hits/checks*100):0;
+   const topNums=Object.entries(hitNums).map(([n,c])=>({n:Number(n),count:c})).filter(x=>x.count>0).sort((a,b)=>b.count-a.count||a.n-b.n);
+   out.push({gap:g,checks,hits,rate,topNums});
+ });
+ return out.sort((a,b)=>b.rate-a.rate||b.hits-a.hits||a.gap-b.gap);
+}
+
+function renderReplayRate(samples,candidates,mode){
+ const rates=replayRateForCandidates(samples,candidates,mode);
+ const top=rates.slice(0,6);
+ if(!top.length)return '<div class="card"><b>패턴 재현율</b><p class="muted">재현율을 계산할 후보가 부족합니다.</p></div>';
+ const best=top[0];
+ const maxCount=best.topNums[0]?.count||1;
+ return `<div class="card">
+   <b>패턴 재현율</b>
+   <p class="guide">패턴 후보가 샘플 내부의 특정 간격에서 다시 나타난 비율입니다.</p>
+   <div class="replay-card">
+     <b>최고 재현 간격: 직전 ${best.gap}칸</b>
+     <p class="muted">${best.checks}개 비교 중 ${best.hits}개 재현 · 재현율 ${best.rate}%</p>
+     <div class="bar"><i style="width:${Math.max(8,best.rate)}%"></i></div>
+     <div class="replay-num-box">
+       <b>재현 번호 TOP</b>
+       ${best.topNums.slice(0,6).map(x=>`
+         <div class="score-line">
+           ${ball(x.n,true)}
+           <div class="bar"><i style="width:${Math.max(8,Math.round(x.count/maxCount*100))}%"></i></div>
+           <div class="count">${x.count}회</div>
+         </div>`).join('') || '<p class="muted">재현 번호 부족</p>'}
+     </div>
+   </div>
+   <div class="replay-grid">
+     ${top.slice(0,6).map(r=>`<div><b>${r.rate}%</b><span>직전 ${r.gap}칸<br>${r.hits}/${r.checks}</span></div>`).join('')}
+   </div>
+ </div>`;
+}
+
+function patternAiScoreDetail(candidates,groups,samples,mode){
+ const rates=replayRateForCandidates(samples,candidates,mode);
+ const bestReplay=rates[0]||{rate:0,hits:0,checks:0,topNums:[]};
+ const basePattern = mode==='series3'
+   ? freqFromIndexedSamples(samples,gapsForSeries('series3',samples.length))
+   : freqFromIndexedSamples(samples,gapsForSeries('series2',samples.length));
+ const flows=buildFlowChains(samples,[basePattern]);
+ const pairStrong=groups.pairs?.[0]?.count||0;
+ const tripleStrong=groups.triples?.[0]?.count||0;
+ const patternBase=Math.min(40, Math.round(candidates[0]?.score||0));
+ const replayScore=Math.min(25, Math.round(bestReplay.rate*0.25));
+ const groupScore=Math.min(20, Math.round(pairStrong*0.9 + tripleStrong*0.45));
+ const flowScore=Math.min(15, Math.round((flows[0]?.count||0)*0.8 + flows.length*0.3));
+ const total=Math.min(100, patternBase+replayScore+groupScore+flowScore);
+ let grade='C';
+ if(total>=90) grade='S';
+ else if(total>=80) grade='A';
+ else if(total>=65) grade='B';
+ const all={};
+ candidates.slice(0,6).forEach(x=>all[x.n]=(all[x.n]||0)+3);
+ bestReplay.topNums.slice(0,6).forEach(x=>all[x.n]=(all[x.n]||0)+4);
+ [...(groups.pairs?.[0]?.nums||[]),...(groups.triples?.[0]?.nums||[])].forEach(n=>all[n]=(all[n]||0)+2);
+ flows.slice(0,3).forEach(f=>f.nums.forEach(n=>all[n]=(all[n]||0)+1));
+ const perNumber=Object.entries(all).map(([n,s])=>({n:Number(n),score:s})).sort((a,b)=>b.score-a.score||a.n-b.n).slice(0,10);
+ const final=perNumber.slice(0,6).map(x=>x.n).sort((a,b)=>a-b);
+ return {total,grade,patternBase,replayScore,groupScore,flowScore,final,perNumber};
+}
+
+function renderAiScorePreview(candidates,groups,samples,mode){
+ const d=patternAiScoreDetail(candidates,groups,samples,mode);
+ const max=d.perNumber[0]?.score||1;
+ return `<div class="card">
+   <b>AI Score 연동 1단계</b>
+   <p class="guide">현재 패턴 결과를 pattern.html 내부에서 AI Score로 환산한 예비 점수입니다. combo.html 추천 엔진에는 아직 반영하지 않습니다.</p>
+   <div class="ai">
+     <b>${d.grade}등급 · ${d.total}점</b>
+     <p class="muted">패턴성 ${d.patternBase}점 · 재현성 ${d.replayScore}점 · 번호군 ${d.groupScore}점 · 흐름성 ${d.flowScore}점</p>
+     <div class="score-grid">
+       <div><b>${d.patternBase}</b><span>패턴성</span></div>
+       <div><b>${d.replayScore}</b><span>재현성</span></div>
+       <div><b>${d.groupScore}</b><span>번호군</span></div>
+       <div><b>${d.flowScore}</b><span>흐름성</span></div>
+     </div>
+     <p class="muted" style="margin-top:10px">AI Score 후보번호</p>
+     <div class="balls">${d.final.map(n=>ball(n,false,'selected-ball')).join('')}</div>
+   </div>
+   <div class="replay-num-box">
+     <b>번호별 AI 반영도</b>
+     ${d.perNumber.map(x=>`
+       <div class="score-line">
+         ${ball(x.n,true)}
+         <div>
+           <div class="bar"><i style="width:${Math.max(8,Math.round(x.score/max*100))}%"></i></div>
+           <div class="contribution">+${x.score} 반영</div>
+         </div>
+         <div class="count">${x.score}</div>
+       </div>`).join('')}
    </div>
  </div>`;
 }
