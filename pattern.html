@@ -436,5 +436,63 @@ document.querySelectorAll('.mode-btn').forEach(btn=>btn.onclick=()=>{document.qu
 $('patternBtn').onclick=()=>{const nums=parseNums();if(nums)renderResult(nums)};
 loadData();
 </script>
+
+<script>
+/* v0.5 Final → combo.html 연동 저장 패치 */
+(function(){
+  if(window.__patternEngineResultSaverBound)return;
+  window.__patternEngineResultSaverBound=true;
+
+  const baseRenderResult = window.renderResult || renderResult;
+  window.renderResult = renderResult = function(nums){
+    baseRenderResult(nums);
+
+    try{
+      const samples=getSampleRows(nums);
+      const p2=freqFromIndexedSamples(samples,gapsForSeries('series2',samples.length)); p2.step=2;
+      const p3=freqFromIndexedSamples(samples,gapsForSeries('series3',samples.length)); p3.step=3;
+      const auto=analyzeAuto(samples);
+      const active=analysisMode==='series2'?[p2]:analysisMode==='series3'?[p3]:auto.slice(0,3);
+      const candidates=scoreCandidates(active);
+      const groups=coOccurrenceGroups(samples,active);
+      const detail=patternAiScoreDetail(candidates,groups,samples,analysisMode);
+      const boost=getDreamChainBoostData(samples,candidates,groups,analysisMode);
+      const rates=replayRateForCandidates(samples,candidates,analysisMode);
+      const bestReplay=rates[0] || {rate:0,hits:0,checks:0,topNums:[]};
+      const flows=buildFlowChains(samples,active);
+      const mode = analysisMode==='series2'?'2계열':analysisMode==='series3'?'3계열':'AI 자동탐색';
+      const topNumbers=(detail.final||[]).slice(0,6).sort((a,b)=>a-b);
+
+      const result={
+        key: nums.slice().sort((a,b)=>a-b).join(','),
+        pattern: Math.min(100,Math.round((detail.patternBase||0)*2.5)),
+        replay: Math.min(100,Math.round((detail.replayScore||0)*4)),
+        flow: Math.min(100,Math.round((detail.flowScore||0)*6.67)),
+        dream: Math.min(100,Math.round(detail.total||0)),
+        confidence: Math.min(98,Math.max(55,Math.round((detail.total||0)*0.65 + (bestReplay.rate||0)*0.25))),
+        mode,
+        sampleCount:samples.length,
+        repeatRate:bestReplay.rate||0,
+        keepCount:boost.chainPick ? boost.chainPick.filter(n=>nums.includes(n)).length : 0,
+        inputCount:nums.length,
+        topNumbers,
+        replayTop:bestReplay.topNums||[],
+        chains:flows.slice(0,3),
+        reasons:{
+          pattern:`${samples.length}개 샘플 · ${mode} · 패턴 후보 ${topNumbers.join(', ')}`,
+          replay:`${bestReplay.hits||0}/${bestReplay.checks||0} 재현 · 재현율 ${bestReplay.rate||0}%`,
+          flow:flows.length?`최고 흐름 ${flows[0].nums.join('→')} · ${flows[0].count}회`:'반복 흐름 후보 부족',
+          dream:`Dream Chain 강화 후보 ${boost.chainPick ? boost.chainPick.join(', ') : '-'}`
+        }
+      };
+
+      localStorage.setItem('pattern_engine_result',JSON.stringify(result));
+    }catch(e){
+      console.warn('pattern_engine_result 저장 실패',e);
+    }
+  };
+})();
+</script>
+
 </body>
 </html>
