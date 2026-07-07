@@ -1234,3 +1234,221 @@ function renderDreamPreviewResult(info){
   document.head.appendChild(st);
 })();
 
+
+
+
+/* =========================================================
+   v1.6.5 Pattern Score Real Link
+   목적: AI Score Card의 Pattern 점수를 실제 로또 데이터 기반으로 산출
+   - 기존 AI Card 표시 구조 유지
+   - LOTTO_DATA / lottoData / window.lottoData 등 다양한 데이터명 자동 탐색
+   - 현재 선택 범위 버튼이 없어도 전체 데이터로 계산
+   - Pattern만 우선 실제 점수화, Replay/Flow/Dream은 다음 단계용 예비값 유지
+========================================================= */
+(function(){
+  function getLottoRowsV165(){
+    const candidates = [
+      window.LOTTO_DATA,
+      window.lottoData,
+      window.allLottoData,
+      window.lottoRows,
+      window.lottoList,
+      window.draws,
+      window.data
+    ];
+    for(const c of candidates){
+      if(Array.isArray(c) && c.length) return normalizeRowsV165(c);
+    }
+
+    // 전역 변수 중 회차 데이터처럼 보이는 배열 자동 탐색
+    for(const k of Object.keys(window)){
+      try{
+        const v = window[k];
+        if(!Array.isArray(v) || v.length < 10) continue;
+        const first = v[0] || {};
+        const hasRound = ('round' in first) || ('drwNo' in first) || ('회차' in first);
+        const hasNums = ('numbers' in first) || ('nums' in first) || ('drwtNo1' in first) || ('n1' in first);
+        if(hasRound && hasNums) return normalizeRowsV165(v);
+      }catch(e){}
+    }
+    return [];
+  }
+
+  function normalizeRowsV165(rows){
+    return rows.map((r,idx)=>{
+      const nums = Array.isArray(r.numbers) ? r.numbers :
+                   Array.isArray(r.nums) ? r.nums :
+                   [r.drwtNo1,r.drwtNo2,r.drwtNo3,r.drwtNo4,r.drwtNo5,r.drwtNo6].filter(Boolean).length ? [r.drwtNo1,r.drwtNo2,r.drwtNo3,r.drwtNo4,r.drwtNo5,r.drwtNo6] :
+                   [r.n1,r.n2,r.n3,r.n4,r.n5,r.n6].filter(Boolean);
+      return {
+        raw:r,
+        round:Number(r.round || r.drwNo || r["회차"] || r.no || idx+1),
+        date:r.date || r.drwNoDate || r["추첨일"] || "",
+        numbers:(nums||[]).map(Number).filter(n=>n>=1&&n<=45),
+        bonus:Number(r.bonus || r.bnusNo || r["보너스"] || r.bonusNo || 0) || null
+      };
+    }).filter(r=>r.numbers.length>=6).sort((a,b)=>a.round-b.round);
+  }
+
+  function uniqV165(nums){
+    return Array.from(new Set((nums||[]).map(Number).filter(n=>n>=1&&n<=45))).sort((a,b)=>a-b);
+  }
+
+  function includeBonusV165(){
+    const el = document.querySelector('#includeBonus, #bonusIncluded, input[type="checkbox"][data-role="bonus"]');
+    if(el) return !!el.checked;
+    const txt = document.body.innerText || "";
+    return txt.includes("보너스 번호 포함") || txt.includes("보너스 포함");
+  }
+
+  function selectedScopeV165(){
+    const activeTexts = Array.from(document.querySelectorAll('button,.btn,.chip,.seg'))
+      .filter(el=>el.classList.contains('active') || el.classList.contains('selected') || el.getAttribute('aria-pressed')==='true')
+      .map(el=>el.innerText.trim());
+    const joined = activeTexts.join(" ");
+    if(joined.includes("최근 50")) return 50;
+    if(joined.includes("최근 100")) return 100;
+    if(joined.includes("전체")) return 0;
+    return 0; // 기본은 전체. AI 랭킹 점수 안정성을 위해 전체 기준
+  }
+
+  function rowsInScopeV165(rows){
+    const scope = selectedScopeV165();
+    if(scope===50) return rows.slice(-50);
+    if(scope===100) return rows.slice(-100);
+    return rows.slice();
+  }
+
+  function rowNumsV165(r,bonus){
+    const arr = r.numbers.slice();
+    if(bonus && r.bonus) arr.push(r.bonus);
+    return arr;
+  }
+
+  function hitCountV165(r, nums, bonus){
+    const set = new Set(rowNumsV165(r, bonus));
+    return nums.filter(n=>set.has(n)).length;
+  }
+
+  function sampleRowsV165(rows, nums, bonus){
+    const need = nums.length >= 4 ? 3 : Math.max(2, nums.length);
+    let matched = rows.filter(r=>hitCountV165(r, nums, bonus)>=need);
+    if(matched.length < 5){
+      matched = rows.filter(r=>hitCountV165(r, nums, bonus)>=Math.max(1, need-1));
+    }
+    return matched.slice(-50);
+  }
+
+  function prevByRoundV165(rows, round, gap){
+    // 회차 번호가 연속이 아닐 가능성까지 고려해 round 기반 우선, 없으면 index 기반은 아래에서 처리
+    return rows.find(r=>r.round === round-gap) || null;
+  }
+
+  function countGapPatternV165(rows, samples, gaps, nums, bonus){
+    const freq = {};
+    let comparisons = 0;
+    let patternHits = 0;
+
+    const indexMap = new Map(rows.map((r,i)=>[r.round,i]));
+
+    samples.forEach(s=>{
+      gaps.forEach(g=>{
+        let prev = prevByRoundV165(rows, s.round, g);
+        if(!prev){
+          const idx = indexMap.get(s.round);
+          if(typeof idx === "number" && idx-g >= 0) prev = rows[idx-g];
+        }
+        if(!prev) return;
+
+        comparisons++;
+        const arr = rowNumsV165(prev, bonus);
+        const inputHits = nums.filter(n=>arr.includes(n)).length;
+        if(inputHits>0) patternHits++;
+
+        arr.forEach(n=>{
+          if(n>=1 && n<=45) freq[n]=(freq[n]||0)+1;
+        });
+      });
+    });
+
+    const list = Object.entries(freq).map(([n,c])=>({n:Number(n), count:c}))
+      .sort((a,b)=>b.count-a.count || a.n-b.n);
+
+    return {comparisons, patternHits, list};
+  }
+
+  function realPatternScoreV165(nums){
+    nums = uniqV165(nums);
+    const rowsAll = getLottoRowsV165();
+    if(!nums.length || !rowsAll.length){
+      return {
+        key: nums.join(','),
+        pattern:0, replay:0, flow:0, dream:0,
+        patternNote:"데이터 대기",
+        replayNote:"0/0 재현",
+        flowNote:"흐름 대기",
+        dreamNote:"Dream 대기"
+      };
+    }
+
+    const bonus = includeBonusV165();
+    const rows = rowsInScopeV165(rowsAll);
+    const samples = sampleRowsV165(rows, nums, bonus);
+
+    const two = countGapPatternV165(rows, samples, [2,4,6,8,10,12,14,16,18,20,22,24], nums, bonus);
+    const three = countGapPatternV165(rows, samples, [3,6,9,12,15], nums, bonus);
+
+    const topTwo = two.list[0]?.count || 0;
+    const topThree = three.list[0]?.count || 0;
+    const maxPossible = Math.max(1, Math.max(two.comparisons, three.comparisons));
+
+    // 입력번호가 특정 간격에서 다시 잡히는 비율
+    const twoRate = two.comparisons ? two.patternHits / two.comparisons : 0;
+    const threeRate = three.comparisons ? three.patternHits / three.comparisons : 0;
+
+    // 후보 집중도: 상위 후보가 비교 횟수 대비 얼마나 반복되는지
+    const concentration = Math.max(
+      two.comparisons ? topTwo / two.comparisons : 0,
+      three.comparisons ? topThree / three.comparisons : 0
+    );
+
+    // 입력번호 자체가 상위 패턴 후보 안에 남아있는 정도
+    const topSet = new Set([...two.list.slice(0,10), ...three.list.slice(0,10)].map(x=>x.n));
+    const preserved = nums.filter(n=>topSet.has(n)).length;
+    const preserveRate = nums.length ? preserved / nums.length : 0;
+
+    // Pattern 점수: 반복률 + 집중도 + 기준번호 보존율
+    const pattern = Math.round(Math.min(100,
+      Math.max(twoRate, threeRate) * 42 +
+      concentration * 38 +
+      preserveRate * 20
+    ));
+
+    // Replay 예비값: 재현 발생률 중심
+    const replay = Math.round(Math.min(100, Math.max(twoRate, threeRate) * 100));
+
+    // Flow/Dream 예비값: 아직 전문 Flow 엔진 전 단계이므로 Pattern 기반 보조값
+    const flow = Math.round(Math.min(100, pattern * 0.65 + preserveRate * 25));
+    const dream = Math.round(Math.min(100, pattern * 0.55 + replay * 0.25 + preserveRate * 20));
+
+    const mode = topTwo >= topThree ? "2계열" : "3계열";
+    const topA = mode === "2계열" ? topTwo : topThree;
+    const compareA = mode === "2계열" ? two.comparisons : three.comparisons;
+
+    return {
+      key: nums.join(','),
+      pattern,
+      replay,
+      flow,
+      dream,
+      patternNote:`${mode} 우세 · TOP ${topA}회 / 비교 ${compareA}`,
+      replayNote:`2계열 ${Math.round(twoRate*100)}% · 3계열 ${Math.round(threeRate*100)}%`,
+      flowNote:`보존 ${preserved}/${nums.length} · 집중 ${Math.round(concentration*100)}%`,
+      dreamNote:`샘플 ${samples.length}회 · 기준 ${nums.length}개`,
+      _debug:{rows:rows.length,samples:samples.length,two,three}
+    };
+  }
+
+  window.readPatternScoreFor = realPatternScoreV165;
+})();
+
