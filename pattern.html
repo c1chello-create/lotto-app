@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>동반패턴 분석 v0.2 🍀</title>
+<title>동반패턴 분석 v0.3 🍀</title>
 <link rel="stylesheet" href="style.css">
 <style>
 body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#101828}
@@ -25,6 +25,15 @@ body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"S
 .bar{height:9px;background:#eaf4ff;border-radius:999px;overflow:hidden}.bar i{display:block;height:100%;background:#2d8cff;border-radius:999px}.count{text-align:right;font-size:13px;font-weight:900;color:#11366b}
 .ai{background:#fffaf0;border:1px solid #f2d99b;border-radius:18px;padding:14px;margin:12px 0}.ai b{color:#8a5b00}.group{background:#f7fff4;border:1px solid #d9ead3;border-radius:16px;padding:12px;margin:10px 0}.group-title{font-weight:900;color:#2f7d32;margin-bottom:8px}
 .sample{background:#fff;border:1px solid #eef2f7;border-radius:14px;margin:8px 0;padding:10px}.sample-head{display:flex;justify-content:space-between;gap:8px;color:#11366b}.sample-head b{font-size:15px}.sample-head span{font-size:12px;color:#667085}
+
+.replay-card{background:#f8fbff;border:1px solid #bfdbfe;border-radius:16px;padding:12px;margin:10px 0}
+.flow-card{background:#fffaf0;border:1px solid #f2d99b;border-radius:16px;padding:12px;margin:10px 0}
+.flow-line{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.arrow{font-weight:900;color:#667085}
+.replay-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.replay-grid div{background:#fff;border:1px solid #e7edf5;border-radius:12px;padding:10px;text-align:center}
+.replay-grid b{display:block;color:#11366b;font-size:17px}.replay-grid span{font-size:12px;color:#667085}
+
 @media(max-width:430px){.tabs a{font-size:13px}.ball{width:38px;height:38px;font-size:17px}.small-ball{width:28px;height:28px;font-size:12px}.rank{grid-template-columns:38px 1fr 46px}}
 </style>
 </head>
@@ -32,7 +41,7 @@ body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"S
 <div class="wrap">
 <header class="top">
 <div class="status"><span>9:41</span><span>▮▮▮ Wi‑Fi 100</span></div>
-<div class="titlebar"><a href="index.html">‹</a><div>동반패턴 분석 v0.2</div><span>🍀</span></div>
+<div class="titlebar"><a href="index.html">‹</a><div>동반패턴 분석 v0.3</div><span>🍀</span></div>
 <nav class="tabs"><a class="active" href="pattern.html">패턴 분석</a><a href="index.html">상세 분석</a><a href="combo.html">조합 분석</a><a href="#">그래프 분석</a></nav>
 </header>
 <div class="card">
@@ -70,7 +79,112 @@ function renderRankList(items,maxVal){return items.length?items.map(c=>`<div cla
 function renderPatternBox(title,p){const max=p.top[0]?.count||1;return `<div class="box"><div class="head"><b>${title}</b><span class="badge">${p.checks}개 비교</span></div>${p.top.map(x=>`<div class="rank">${ball(x.n,true)}<div class="bar"><i style="width:${Math.max(8,Math.round(x.count/max*100))}%"></i></div><div class="count">${x.count}회</div></div>`).join('')||'<p class="muted">후보 부족</p>'}</div>`}
 function renderGroups(groups){const pm=groups.pairs[0]?.count||1,tm=groups.triples[0]?.count||1;return `<div class="card"><b>동반출현 번호군</b><p class="guide">샘플 내부 간격 회차에서 함께 반복된 2개/3개 번호 묶음입니다.</p><div class="group"><div class="group-title">2번호군 TOP</div>${groups.pairs.map(g=>`<div class="rank"><div class="balls">${g.nums.map(n=>ball(n,true)).join('')}</div><div class="bar"><i style="width:${Math.max(8,Math.round(g.count/pm*100))}%"></i></div><div class="count">${g.count}회</div></div>`).join('')||'<p class="muted">번호군 부족</p>'}</div><div class="group"><div class="group-title">3번호군 TOP</div>${groups.triples.map(g=>`<div class="rank"><div class="balls">${g.nums.map(n=>ball(n,true)).join('')}</div><div class="bar"><i style="width:${Math.max(8,Math.round(g.count/tm*100))}%"></i></div><div class="count">${g.count}회</div></div>`).join('')||'<p class="muted">번호군 부족</p>'}</div></div>`}
 function renderSamples(samples){return samples.slice(0,8).map((x,idx)=>`<div class="sample"><div class="sample-head"><b>${idx+1}. ${x.row.round}회 · ${x.hit}개 포함</b><span>${x.row.date||''}</span></div><div class="balls">${(x.row.numbers||[]).map(n=>ball(n,true)).join('')}${ball(x.row.bonus,true)}</div></div>`).join('')}
-function renderResult(nums){const samples=getSampleRows(nums);const p2=freqFromIndexedSamples(samples,gapsForSeries('series2',samples.length));p2.step=2;const p3=freqFromIndexedSamples(samples,gapsForSeries('series3',samples.length));p3.step=3;const auto=analyzeAuto(samples);const autoBest=auto[0]||p2;const active=analysisMode==='series2'?[p2]:analysisMode==='series3'?[p3]:auto.slice(0,3);const candidates=scoreCandidates(active);const groups=coOccurrenceGroups(samples,active);const maxScore=candidates[0]?.score||1;const pick=candidates.slice(0,6).map(x=>x.n).sort((a,b)=>a-b);const judgeTitle=analysisMode==='auto'?'AI 자동탐색':'선택 계열 분석';const judgeDesc=analysisMode==='auto'?`${autoBest.step}계열이 현재 샘플에서 가장 높은 반복 점수를 보였습니다.`:`${analysisMode==='series2'?'2계열':'3계열'} 간격 기준으로 샘플 내부 반복 패턴을 분석했습니다.`;$('patternResult').innerHTML=`<div class="card"><b>동반패턴 분석 요약</b><div class="balls" style="margin-top:10px">${nums.map(n=>ball(n)).join('')}</div><div class="metric"><div><b>${samples.length}</b><span>샘플 회차</span></div><div><b>${minHit(nums)}개+</b><span>포함 조건</span></div><div><b>${includeBonus()?'포함':'제외'}</b><span>보너스</span></div></div><div class="ai"><b>${judgeTitle}</b><p class="muted">${judgeDesc}</p><p class="muted">패턴 후보</p><div class="balls">${pick.map(n=>ball(n,false,'selected-ball')).join('')}</div></div></div><div class="title">패턴 후보 TOP</div><div class="card">${renderRankList(candidates,maxScore)}</div><div class="title">간격별 분석</div><div class="card">${renderPatternBox('2계열: 2·4·6·8 ...',p2)}${renderPatternBox('3계열: 3·6·9·12 ...',p3)}${analysisMode==='auto'?`<div class="box"><div class="head"><b>AI 자동탐색 TOP</b><span class="badge">${autoBest.step||'-'}계열 우선</span></div>${auto.slice(0,5).map(a=>`<p class="muted"><b>${a.step}계열</b> · 점수 ${a.score} · 비교 ${a.checks}개 · 집중도 ${Math.round(a.concentration*100)}%</p>`).join('')}</div>`:''}</div><div class="title">동반출현 번호군</div>${renderGroups(groups)}<div class="title">샘플 회차 확인</div><div class="card"><p class="guide">동반번호가 확인된 최신 샘플 일부입니다.</p>${renderSamples(samples)}</div>`}
+
+function replayRateForCandidates(samples,candidates,mode){
+ const picks=candidates.slice(0,6).map(x=>x.n);
+ if(!picks.length)return [];
+ const gaps = mode==='series3' ? gapsForSeries('series3',samples.length) : gapsForSeries('series2',samples.length);
+ const out=[];
+ gaps.slice(0,12).forEach(g=>{
+   let checks=0, hits=0, hitNums={};
+   picks.forEach(n=>hitNums[n]=0);
+   for(let i=0;i<samples.length;i++){
+     const target=samples[i+g];
+     if(!target)continue;
+     checks++;
+     const p=pool(target.row);
+     const local=picks.filter(n=>p.includes(n));
+     if(local.length){
+       hits++;
+       local.forEach(n=>hitNums[n]++);
+     }
+   }
+   const rate=checks?Math.round(hits/checks*100):0;
+   out.push({gap:g,checks,hits,rate,hitNums});
+ });
+ return out.sort((a,b)=>b.rate-a.rate||b.hits-a.hits||a.gap-b.gap);
+}
+function renderReplayRate(samples,candidates,mode){
+ const rates=replayRateForCandidates(samples,candidates,mode);
+ const top=rates.slice(0,6);
+ if(!top.length)return '<div class="card"><b>패턴 재현율</b><p class="muted">재현율을 계산할 후보가 부족합니다.</p></div>';
+ const best=top[0];
+ return `<div class="card">
+   <b>패턴 재현율</b>
+   <p class="guide">패턴 후보가 샘플 내부의 특정 간격에서 다시 나타난 비율입니다. 높을수록 해당 간격의 반복성이 강합니다.</p>
+   <div class="replay-card">
+     <b>최고 재현 간격: 직전 ${best.gap}칸</b>
+     <p class="muted">${best.checks}개 비교 중 ${best.hits}개 재현 · 재현율 ${best.rate}%</p>
+     <div class="bar"><i style="width:${Math.max(8,best.rate)}%"></i></div>
+   </div>
+   <div class="replay-grid">
+     ${top.slice(0,6).map(r=>`<div><b>${r.rate}%</b><span>직전 ${r.gap}칸<br>${r.hits}/${r.checks}</span></div>`).join('')}
+   </div>
+ </div>`;
+}
+function buildFlowChains(samples,patterns){
+ const gaps=[...new Set(patterns.flatMap(p=>p.gaps||[]))].slice(0,10);
+ const chains={};
+ for(let i=0;i<samples.length;i++){
+   gaps.forEach(g=>{
+     const a=samples[i], b=samples[i+g], c=samples[i+g*2];
+     if(!a||!b||!c)return;
+     const aTop=pool(a.row).filter(n=>n>=1&&n<=45);
+     const bTop=pool(b.row).filter(n=>n>=1&&n<=45);
+     const cTop=pool(c.row).filter(n=>n>=1&&n<=45);
+     aTop.forEach(x=>{
+       bTop.forEach(y=>{
+         cTop.forEach(z=>{
+           if(x===y&&y===z)return;
+           const key=`${x}-${y}-${z}`;
+           chains[key]=(chains[key]||0)+1;
+         });
+       });
+     });
+   });
+ }
+ return Object.entries(chains)
+   .map(([k,c])=>({nums:k.split('-').map(Number),count:c}))
+   .filter(x=>x.count>=2)
+   .sort((a,b)=>b.count-a.count||a.nums[0]-b.nums[0])
+   .slice(0,10);
+}
+function renderFlowChains(samples,patterns){
+ const flows=buildFlowChains(samples,patterns);
+ const max=flows[0]?.count||1;
+ return `<div class="card">
+   <b>흐름분석 · Dream Chain TOP</b>
+   <p class="guide">샘플 내부 간격에서 반복된 3단계 번호 흐름입니다. 예: A → B → C 형태로 나타난 반복 후보입니다.</p>
+   ${flows.length?flows.map(f=>`
+     <div class="flow-card">
+       <div class="flow-line">
+         ${ball(f.nums[0],true)}<span class="arrow">→</span>${ball(f.nums[1],true)}<span class="arrow">→</span>${ball(f.nums[2],true)}
+         <span class="badge">${f.count}회</span>
+       </div>
+       <div class="bar" style="margin-top:8px"><i style="width:${Math.max(8,Math.round(f.count/max*100))}%"></i></div>
+     </div>`).join(''):'<p class="muted">반복 흐름 후보가 부족합니다.</p>'}
+ </div>`;
+}
+function renderAiScorePreview(candidates,groups,samples,mode){
+ const top=candidates.slice(0,6).map(x=>x.n).sort((a,b)=>a-b);
+ const pairStrong=groups.pairs?.[0]?.count||0;
+ const replay=replayRateForCandidates(samples,candidates,mode)[0]?.rate||0;
+ const flowCount=buildFlowChains(samples, mode==='series3'?[freqFromIndexedSamples(samples,gapsForSeries('series3',samples.length))]:[freqFromIndexedSamples(samples,gapsForSeries('series2',samples.length))]).length;
+ let grade='B';
+ if(replay>=70 && pairStrong>=10) grade='S';
+ else if(replay>=55 || pairStrong>=8) grade='A';
+ return `<div class="card">
+   <b>AI Score 연동 미리보기</b>
+   <p class="guide">현재 패턴 결과를 AI Score Card에 연결할 때 사용할 수 있는 예비 항목입니다.</p>
+   <div class="ai">
+     <b>${grade}등급 후보</b>
+     <p class="muted">패턴성 ${replay}% · 번호군 강도 ${pairStrong}회 · 흐름 후보 ${flowCount}개</p>
+     <div class="balls">${top.map(n=>ball(n,false,'selected-ball')).join('')}</div>
+   </div>
+ </div>`;
+}
+
+function renderResult(nums){const samples=getSampleRows(nums);const p2=freqFromIndexedSamples(samples,gapsForSeries('series2',samples.length));p2.step=2;const p3=freqFromIndexedSamples(samples,gapsForSeries('series3',samples.length));p3.step=3;const auto=analyzeAuto(samples);const autoBest=auto[0]||p2;const active=analysisMode==='series2'?[p2]:analysisMode==='series3'?[p3]:auto.slice(0,3);const candidates=scoreCandidates(active);const groups=coOccurrenceGroups(samples,active);const maxScore=candidates[0]?.score||1;const pick=candidates.slice(0,6).map(x=>x.n).sort((a,b)=>a-b);const judgeTitle=analysisMode==='auto'?'AI 자동탐색':'선택 계열 분석';const judgeDesc=analysisMode==='auto'?`${autoBest.step}계열이 현재 샘플에서 가장 높은 반복 점수를 보였습니다.`:`${analysisMode==='series2'?'2계열':'3계열'} 간격 기준으로 샘플 내부 반복 패턴을 분석했습니다.`;$('patternResult').innerHTML=`<div class="card"><b>동반패턴 분석 요약</b><div class="balls" style="margin-top:10px">${nums.map(n=>ball(n)).join('')}</div><div class="metric"><div><b>${samples.length}</b><span>샘플 회차</span></div><div><b>${minHit(nums)}개+</b><span>포함 조건</span></div><div><b>${includeBonus()?'포함':'제외'}</b><span>보너스</span></div></div><div class="ai"><b>${judgeTitle}</b><p class="muted">${judgeDesc}</p><p class="muted">패턴 후보</p><div class="balls">${pick.map(n=>ball(n,false,'selected-ball')).join('')}</div></div></div><div class="title">패턴 후보 TOP</div><div class="card">${renderRankList(candidates,maxScore)}</div><div class="title">간격별 분석</div><div class="card">${renderPatternBox('2계열: 2·4·6·8 ...',p2)}${renderPatternBox('3계열: 3·6·9·12 ...',p3)}${analysisMode==='auto'?`<div class="box"><div class="head"><b>AI 자동탐색 TOP</b><span class="badge">${autoBest.step||'-'}계열 우선</span></div>${auto.slice(0,5).map(a=>`<p class="muted"><b>${a.step}계열</b> · 점수 ${a.score} · 비교 ${a.checks}개 · 집중도 ${Math.round(a.concentration*100)}%</p>`).join('')}</div>`:''}</div><div class="title">동반출현 번호군</div>${renderGroups(groups)}<div class="title">패턴 재현율</div>${renderReplayRate(samples,candidates,analysisMode)}<div class="title">흐름분석</div>${renderFlowChains(samples,active)}<div class="title">AI Score 연동</div>${renderAiScorePreview(candidates,groups,samples,analysisMode)}<div class="title">샘플 회차 확인</div><div class="card"><p class="guide">동반번호가 확인된 최신 샘플 일부입니다.</p>${renderSamples(samples)}</div>`}
 async function loadData(){try{const res=await fetch('./data/lotto.json?ts='+Date.now());const data=await res.json();lottoData=data.sort((a,b)=>b.round-a.round);$('patternStatus').textContent=`전체 ${lottoData.length}개 회차 데이터를 불러왔습니다.`;const saved=JSON.parse(localStorage.getItem('haengun_my_nums')||'null');if(Array.isArray(saved)&&saved.length>=2)$('patternInput').value=saved.slice(0,6).join(' ')}catch(e){console.error(e);$('patternStatus').textContent='데이터 오류: data/lotto.json을 읽지 못했습니다.'}}
 document.querySelectorAll('.sample-btn').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.sample-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');sampleLimit=Number(btn.dataset.sample)});
 document.querySelectorAll('.mode-btn').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');analysisMode=btn.dataset.mode});
