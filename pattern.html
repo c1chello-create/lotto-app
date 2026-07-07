@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>동반패턴 분석 v0.1 🍀</title>
+<link rel="stylesheet" href="style.css">
+<style>
+body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#101828}
+.pattern-wrap{max-width:520px;margin:0 auto;padding-bottom:48px}
+.pattern-top{background:#11366b;color:#fff;position:sticky;top:0;z-index:10}
+.status{display:flex;justify-content:space-between;padding:10px 16px;font-weight:800}
+.pattern-titlebar{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;font-weight:900}
+.pattern-titlebar a{text-decoration:none;color:#fff;font-size:30px}.pattern-titlebar div{font-size:20px}
+.pattern-tabs{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid rgba(255,255,255,.12)}
+.pattern-tabs a{text-decoration:none;color:#dbe8ff;text-align:center;padding:13px 4px;font-weight:900;font-size:14px;border-bottom:4px solid transparent}
+.pattern-tabs a.active{color:#fff;border-bottom-color:#5aa0ff}
+.card{background:#fff;border:1px solid #e7edf5;border-radius:18px;padding:16px;margin:12px;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+.guide{font-size:13px;color:#667085;line-height:1.5}.input{width:100%;box-sizing:border-box;border:1px solid #d0d5dd;border-radius:12px;padding:13px;font-size:17px;margin:8px 0}
+.btn{width:100%;border:0;border-radius:14px;padding:13px;font-size:16px;font-weight:900;background:#11366b;color:#fff}
+.btn-row{display:flex;gap:8px;margin-top:10px}.btn-row button{flex:1;border:1px solid #d0d5dd;background:#fff;border-radius:12px;padding:10px 6px;font-weight:900;color:#344054}
+.btn-row button.active{background:#11366b;color:#fff;border-color:#11366b}
+.balls{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.ball{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font-weight:900;box-shadow:0 4px 10px rgba(0,0,0,.18);width:42px;height:42px;font-size:18px}
+.small-ball{width:32px;height:32px;font-size:14px}
+.yellow{background:#e7b926}.blue{background:#2f73c8}.red{background:#d84338}.black{background:#374151}.green{background:#4c984b}
+.selected-ball{outline:4px solid #f8e388}
+.metric-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}.metric-grid div{background:#f8fafc;border-radius:14px;padding:12px;text-align:center}.metric-grid b{display:block;font-size:18px;color:#11366b}.metric-grid span{font-size:12px;color:#667085}
+.section-title{margin:18px 12px 8px;font-size:19px;font-weight:900;color:#101828}
+.pattern-box{border-top:1px solid #eef2f7;padding-top:12px;margin-top:12px}
+.pattern-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}.pattern-head b{font-size:17px}.badge{background:#eef2ff;color:#11366b;border-radius:999px;padding:6px 10px;font-weight:900;font-size:13px}
+.rank-row{display:grid;grid-template-columns:44px 1fr 54px;gap:8px;align-items:center;border-top:1px solid #eef2f7;padding:8px 0}.rank-row:first-child{border-top:0}
+.bar{height:9px;background:#eaf4ff;border-radius:999px;overflow:hidden}.bar i{display:block;height:100%;background:#2d8cff;border-radius:999px}
+.count{text-align:right;font-size:13px;font-weight:900;color:#11366b}
+.sample-row{background:#fff;border:1px solid #eef2f7;border-radius:14px;margin:8px 0;padding:10px}
+.sample-head{display:flex;justify-content:space-between;gap:8px;color:#11366b}.sample-head b{font-size:15px}.sample-head span{font-size:12px;color:#667085}
+.echo-grid{display:grid;grid-template-columns:64px 1fr;gap:6px;align-items:center;margin-top:7px}.echo-grid span{font-size:12px;color:#667085;font-weight:900}.echo-grid div{font-size:12px;color:#344054;line-height:1.45}
+.ai-card{background:#fffaf0;border:1px solid #f2d99b;border-radius:18px;padding:14px;margin:12px 0}
+.ai-card b{color:#8a5b00}.muted{font-size:13px;color:#667085;line-height:1.45}
+.empty{background:#fff;border:1px dashed #cbd5e1;border-radius:18px;padding:20px;text-align:center;color:#667085;margin:12px}
+@media(max-width:430px){.pattern-tabs a{font-size:13px}.ball{width:38px;height:38px;font-size:17px}.small-ball{width:28px;height:28px;font-size:12px}.rank-row{grid-template-columns:38px 1fr 46px}}
+</style>
+</head>
+<body>
+<div class="pattern-wrap">
+<header class="pattern-top">
+<div class="status"><span>9:41</span><span>▮▮▮ Wi‑Fi 100</span></div>
+<div class="pattern-titlebar"><a href="index.html">‹</a><div>동반패턴 분석 v0.1</div><span>🍀</span></div>
+<nav class="pattern-tabs">
+<a class="active" href="pattern.html">패턴 분석</a>
+<a href="index.html">상세 분석</a>
+<a href="combo.html">조합 분석</a>
+<a href="#">그래프 분석</a>
+</nav>
+</header>
+
+<div class="card">
+<b>기준번호 입력</b>
+<p class="guide">2개~6개 번호를 입력하면, 해당 번호가 함께 포함된 회차를 최대 50개 샘플링하고 직전 2·4·6 / 직전 3·6 패턴을 분석합니다.</p>
+<input id="patternInput" class="input" placeholder="예: 19 26 39">
+<button id="patternBtn" class="btn">동반패턴 분석하기</button>
+<div class="btn-row">
+<button class="sample-btn active" data-sample="50">50개 샘플</button>
+<button class="sample-btn" data-sample="30">30개 샘플</button>
+<button class="sample-btn" data-sample="20">20개 샘플</button>
+</div>
+<label class="guide" style="display:block;margin-top:10px"><input type="checkbox" id="includeBonusPattern" checked> 보너스 번호 포함</label>
+</div>
+
+<div id="patternStatus" class="guide" style="margin:12px">데이터를 불러오는 중입니다...</div>
+<div id="patternResult"></div>
+</div>
+
+<script>
+let lottoData = [];
+let sampleLimit = 50;
+
+function $(id){return document.getElementById(id)}
+function colorClass(n){n=Number(n);if(n<=9)return'yellow';if(n<=19)return'blue';if(n<=29)return'red';if(n<=39)return'black';return'green'}
+function ball(n,small=false,extra=''){return `<span class="ball ${small?'small-ball':''} ${extra} ${colorClass(n)}">${n}</span>`}
+function parseNums(){
+const nums = [...new Set(($('patternInput').value||'').replaceAll(',',' ').split(/\s+/).map(Number).filter(n=>Number.isInteger(n)&&n>=1&&n<=45))].sort((a,b)=>a-b);
+if(nums.length<2 || nums.length>6){alert('2개~6개 번호를 입력하세요.');return null}
+return nums;
+}
+function includeBonus(){return $('includeBonusPattern') ? $('includeBonusPattern').checked : true}
+function pool(row){return includeBonus() ? [...(row.numbers||[]), row.bonus] : [...(row.numbers||[])]}
+function getRowByRound(round){return lottoData.find(r=>Number(r.round)===Number(round))}
+function hitCount(row, nums){const p=pool(row);return nums.filter(n=>p.includes(n)).length}
+function minHit(nums){if(nums.length>=5)return 3;if(nums.length===4)return 3;return nums.length}
+function getCompanionSampleRows(nums){
+const threshold = minHit(nums);
+return lottoData.map(row=>({row,hit:hitCount(row,nums)})).filter(x=>x.hit>=threshold).sort((a,b)=>b.row.round-a.row.round).slice(0,sampleLimit);
+}
+function previousRows(baseRound, gaps){return gaps.map(g=>({gap:g,row:getRowByRound(Number(baseRound)-g)})).filter(x=>x.row)}
+function freqFromRows(rows){
+const map={};for(let i=1;i<=45;i++)map[i]=0;
+rows.forEach(row=>(row.numbers||[]).forEach(n=>map[n]++));
+return Object.entries(map).map(([n,c])=>({n:Number(n),count:c})).filter(x=>x.count>0).sort((a,b)=>b.count-a.count||a.n-b.n);
+}
+function analyzeGapPattern(sampleRows,gaps){
+const prev=[];sampleRows.forEach(x=>{previousRows(x.row.round,gaps).forEach(p=>prev.push(p.row))});
+const freq=freqFromRows(prev);return {gaps,rows:prev,freq,top:freq.slice(0,10)};
+}
+function scoreCandidates(patterns){
+const scores={};
+patterns.forEach(p=>{
+const weight=p.gaps.length===3?1.15:1.0;
+p.freq.forEach((x,idx)=>{
+scores[x.n]=scores[x.n]||{n:x.n,score:0,sources:[],count:0};
+const rankBoost=Math.max(1,12-idx);
+scores[x.n].score += x.count*weight + rankBoost*0.15;
+scores[x.n].count += x.count;
+if(idx<10)scores[x.n].sources.push(`${p.gaps.join('·')}간격 ${x.count}회`);
+});
+});
+return Object.values(scores).sort((a,b)=>b.score-a.score||a.n-b.n).slice(0,10);
+}
+function stars(v,max){const p=max?Math.round(v/max*100):0;if(p>=85)return'★★★★★';if(p>=70)return'★★★★☆';if(p>=55)return'★★★☆☆';if(p>=35)return'★★☆☆☆';return'★☆☆☆☆'}
+function aiJudge(patterns,candidates,sampleRows){
+if(!sampleRows.length)return {title:'샘플 부족',desc:'동반 포함 회차가 부족해 패턴 판단이 어렵습니다.',pick:[],bestGap:'-'};
+const max=candidates[0]?.score||1;
+const strong=candidates.filter(c=>c.score>=max*.65).length;
+const bestGap=[...patterns].sort((a,b)=>(b.top[0]?.count||0)-(a.top[0]?.count||0))[0];
+let title='보조 참고 패턴';
+let desc='반복 후보는 확인되지만 강한 집중도는 아직 부족합니다.';
+if(strong>=4){title='패턴 후보 사용 가능';desc=`${bestGap.gaps.join('·')} 간격에서 반복성이 비교적 높습니다. AI 추천 동반번호 아래 보조 패턴으로 표시할 가치가 있습니다.`}
+if(strong>=6){title='패턴 강세';desc='여러 간격에서 공통 후보가 반복됩니다. Dream Chain / AI Score의 패턴성 항목으로 반영할 가치가 있습니다.'}
+return {title,desc,pick:candidates.slice(0,6).map(x=>x.n).sort((a,b)=>a-b),bestGap:bestGap.gaps.join('·')};
+}
+function renderPatternBox(title, pattern){
+const max=pattern.top[0]?.count||1;
+return `<div class="pattern-box">
+<div class="pattern-head"><b>${title}</b><span class="badge">${pattern.rows.length}개 직전회차</span></div>
+${pattern.top.length?pattern.top.map(x=>`
+<div class="rank-row">
+${ball(x.n,true)}
+<div class="bar"><i style="width:${Math.max(8,Math.round(x.count/max*100))}%"></i></div>
+<div class="count">${x.count}회</div>
+</div>`).join(''):'<p class="muted">패턴 후보가 부족합니다.</p>'}
+</div>`;
+}
+function renderSamples(sampleRows, nums){
+const show=sampleRows.slice(0,8);
+if(!show.length)return '<div class="empty">동반 포함 회차가 없습니다.</div>';
+return show.map(x=>{
+const p246=previousRows(x.row.round,[2,4,6]);
+const p36=previousRows(x.row.round,[3,6]);
+return `<div class="sample-row">
+<div class="sample-head"><b>${x.row.round}회 · ${x.hit}개 포함</b><span>${x.row.date||''}</span></div>
+<div class="balls">${(x.row.numbers||[]).map(n=>ball(n,true,nums.includes(n)?'selected-ball':'')).join('')}${ball(x.row.bonus,true,nums.includes(x.row.bonus)?'selected-ball':'')}</div>
+<div class="echo-grid"><span>직전2·4·6</span><div>${p246.map(p=>`${p.gap}: ${(p.row.numbers||[]).join(' ')}`).join('<br>')||'-'}</div></div>
+<div class="echo-grid"><span>직전3·6</span><div>${p36.map(p=>`${p.gap}: ${(p.row.numbers||[]).join(' ')}`).join('<br>')||'-'}</div></div>
+</div>`;
+}).join('');
+}
+function renderResult(nums){
+const samples=getCompanionSampleRows(nums);
+const p246=analyzeGapPattern(samples,[2,4,6]);
+const p36=analyzeGapPattern(samples,[3,6]);
+const p24=analyzeGapPattern(samples,[2,4]);
+const patterns=[p246,p36,p24];
+const candidates=scoreCandidates(patterns);
+const judge=aiJudge(patterns,candidates,samples);
+const maxScore=candidates[0]?.score||1;
+
+$('patternResult').innerHTML=`
+<div class="card">
+<b>동반패턴 분석 요약</b>
+<div class="balls" style="margin-top:10px">${nums.map(n=>ball(n)).join('')}</div>
+<div class="metric-grid">
+<div><b>${samples.length}</b><span>샘플 회차</span></div>
+<div><b>${minHit(nums)}개+</b><span>포함 조건</span></div>
+<div><b>${includeBonus()?'포함':'제외'}</b><span>보너스</span></div>
+</div>
+<div class="ai-card">
+<b>AI 패턴 판단</b>
+<p class="muted"><b>${judge.title}</b></p>
+<p class="muted">${judge.desc}</p>
+<p class="muted">우선 간격: ${judge.bestGap||'-'} / 패턴 후보</p>
+<div class="balls">${judge.pick.map(n=>ball(n,false,'selected-ball')).join('')}</div>
+</div>
+</div>
+
+<div class="section-title">패턴 후보 TOP</div>
+<div class="card">
+${candidates.length?candidates.map(c=>`
+<div class="rank-row">
+${ball(c.n,true)}
+<div>
+<div class="bar"><i style="width:${Math.max(8,Math.round(c.score/maxScore*100))}%"></i></div>
+<div class="muted">${stars(c.score,maxScore)} · ${c.sources.slice(0,2).join(' / ')}</div>
+</div>
+<div class="count">${Math.round(c.score)}</div>
+</div>`).join(''):'<p class="muted">후보가 부족합니다.</p>'}
+</div>
+
+<div class="section-title">간격별 분석</div>
+<div class="card">
+${renderPatternBox('직전 2·4·6회차 패턴',p246)}
+${renderPatternBox('직전 3·6회차 패턴',p36)}
+${renderPatternBox('직전 2·4회차 보조 패턴',p24)}
+</div>
+
+<div class="section-title">샘플 회차 확인</div>
+<div class="card">
+<p class="guide">동반번호가 확인된 최신 샘플 일부와 해당 회차의 직전 패턴입니다.</p>
+${renderSamples(samples,nums)}
+</div>`;
+}
+async function loadData(){
+try{
+const res=await fetch('./data/lotto.json?ts='+Date.now());
+const data=await res.json();
+if(!Array.isArray(data))throw new Error('lotto.json 배열 아님');
+lottoData=data.sort((a,b)=>b.round-a.round);
+$('patternStatus').textContent=`전체 ${lottoData.length}개 회차 데이터를 불러왔습니다.`;
+const saved=JSON.parse(localStorage.getItem('haengun_my_nums')||'null');
+if(Array.isArray(saved)&&saved.length>=2){$('patternInput').value=saved.slice(0,6).join(' ')}
+}catch(e){console.error(e);$('patternStatus').textContent='데이터 오류: data/lotto.json을 읽지 못했습니다.'}
+}
+document.querySelectorAll('.sample-btn').forEach(btn=>{
+btn.onclick=()=>{
+document.querySelectorAll('.sample-btn').forEach(b=>b.classList.remove('active'));
+btn.classList.add('active');
+sampleLimit=Number(btn.dataset.sample);
+};
+});
+$('patternBtn').onclick=()=>{const nums=parseNums();if(nums)renderResult(nums)};
+loadData();
+</script>
+</body>
+</html>
