@@ -191,24 +191,126 @@ function pctOf(value,max){return Math.max(0,Math.min(100,Math.round(((value||0)/
 function starsFromScore(p){if(p>=88)return'★★★★★';if(p>=75)return'★★★★☆';if(p>=60)return'★★★☆☆';if(p>=40)return'★★☆☆☆';return'★☆☆☆☆'}
 function scoreLabel(p){if(p>=88)return'매우 강함';if(p>=75)return'강함';if(p>=60)return'보통';if(p>=40)return'참고';return'약함'}
 function renderAIScoreRow(label,pct,note){return `<div class="ai-score-row"><span>${label}</span><b>${starsFromScore(pct)}</b><em>${scoreLabel(pct)} · ${pct}점</em>${note?`<small>${note}</small>`:''}</div>`}
+
+function aiScoreGrade(score){
+  if(score>=92)return 'S';
+  if(score>=85)return 'A+';
+  if(score>=78)return 'A';
+  if(score>=68)return 'B+';
+  if(score>=58)return 'B';
+  return 'C';
+}
+function aiScoreJudge(score){
+  if(score>=88)return '적극 추천';
+  if(score>=78)return '추천 검토';
+  if(score>=68)return '관찰 추천';
+  if(score>=58)return '보조 후보';
+  return '실험 후보';
+}
+function readPatternScoreFor(nums){
+  // 향후 pattern.html이 localStorage에 저장하면 자동 연동될 수 있도록 준비한 구조입니다.
+  // 현재 v1.6.3에서는 표시 구조 우선 완성 단계이므로, 저장값이 없으면 null을 반환합니다.
+  try{
+    const raw = localStorage.getItem('pattern_ai_score_v1') || localStorage.getItem('patternAiScore');
+    if(!raw)return null;
+    const data = JSON.parse(raw);
+    const key = nums.slice().sort((a,b)=>a-b).join(',');
+    if(data.key && data.key !== key)return null;
+    return data;
+  }catch(e){
+    return null;
+  }
+}
+function renderCoreMetric(label,score,note){
+  const safe = Math.max(0,Math.min(100,Math.round(score||0)));
+  return `<div class="ai-core-metric">
+    <div class="ai-core-metric-top"><b>${label}</b><span>${safe}점</span></div>
+    <div class="ai-core-bar"><i style="width:${Math.max(6,safe)}%"></i></div>
+    <p>${note||''}</p>
+  </div>`;
+}
+function renderPendingMetric(label,note){
+  return `<div class="ai-core-metric pending">
+    <div class="ai-core-metric-top"><b>${label}</b><span>대기</span></div>
+    <div class="ai-core-bar"><i style="width:8%"></i></div>
+    <p>${note}</p>
+  </div>`;
+}
+
+
 function renderAIScoreCard(c,maxes){
   const companion=pctOf(c.parts.companion,maxes.companion);
   const trend=pctOf((c.parts.recent||0)+(c.parts.long||0),maxes.trend);
   const structure=pctOf((c.parts.balance||0)+(c.parts.oddEven||0),maxes.structure);
   const longlearn=pctOf((c.parts.historical||0)+(c.parts.learned||0),maxes.longlearn);
   const total=c.trust;
-  return `<div class="ai-score-card">
-    <div class="ai-score-head"><b>AI Score Card</b><span>${c.grade} · ${total}점</span></div>
-    ${renderAIScoreRow('동반성',companion,'동반번호·쌍번호 강도')}
-    ${renderAIScoreRow('추세',trend,'최근 흐름과 장기 출현')}
-    ${renderAIScoreRow('구조',structure,'구간균형·홀짝구성')}
-    ${renderAIScoreRow('장기학습',longlearn,'과거 적중·구조학습')}
-    <details class="ai-score-detail"><summary>AI 계산 근거 자세히 보기</summary>
-      <p class="combo-guide">원점수: 동반 ${Math.round(c.parts.companion)} · 균형 ${c.parts.balance} · 홀짝 ${c.parts.oddEven} · 추세 ${(c.parts.recent||0)+(c.parts.long||0)} · 장기 ${Math.round(c.parts.historical||0)} · 학습 ${Math.round(c.parts.learned||0)}</p>
-      <p class="combo-guide">표시 점수는 각 후보 조합 안에서 상대 비교하여 별점으로 변환한 값입니다. 당첨 확률이 아니라 분석 강도와 일관성 표시입니다.</p>
+
+  const patternLink = readPatternScoreFor(c.nums);
+  const patternScore = patternLink ? Math.round(patternLink.pattern || patternLink.patternBase || 0) : null;
+  const replayScore = patternLink ? Math.round(patternLink.replay || patternLink.replayScore || 0) : null;
+  const flowScore = patternLink ? Math.round(patternLink.flow || patternLink.flowScore || 0) : null;
+  const dreamScore = patternLink ? Math.round(patternLink.dream || patternLink.dreamScore || 0) : null;
+
+  const baseAvg = Math.round((companion+trend+structure+longlearn)/4);
+  const confidence = Math.max(55,Math.min(98,Math.round(total*0.68 + baseAvg*0.32)));
+  const coreGrade = aiScoreGrade(total);
+  const confidenceGrade = aiScoreGrade(confidence);
+
+  const patternBlock = patternLink ? `
+    ${renderCoreMetric('Pattern',patternScore,'pattern.html 연동 점수')}
+    ${renderCoreMetric('Replay',replayScore,'패턴 재현율')}
+    ${renderCoreMetric('Flow',flowScore,'흐름분석')}
+    ${renderCoreMetric('Dream',dreamScore,'Dream Chain 반영')}
+  ` : `
+    ${renderPendingMetric('Pattern','pattern.html 연동 예정')}
+    ${renderPendingMetric('Replay','재현율 연동 예정')}
+    ${renderPendingMetric('Flow','흐름분석 연동 예정')}
+    ${renderPendingMetric('Dream','Dream Chain 연동 예정')}
+  `;
+
+  return `<div class="ai-score-card ai-score-v163">
+    <div class="ai-score-head">
+      <b>AI Score Card</b>
+      <span>${c.grade} · ${total}점</span>
+    </div>
+
+    <div class="ai-core-summary">
+      <div>
+        <b>${coreGrade}</b>
+        <span>AI Score</span>
+      </div>
+      <div>
+        <b>${confidence}%</b>
+        <span>Confidence ${confidenceGrade}</span>
+      </div>
+      <div>
+        <b>${aiScoreJudge(total)}</b>
+        <span>AI 판단</span>
+      </div>
+    </div>
+
+    <div class="ai-core-title">기존 AI 엔진</div>
+    <div class="ai-core-grid">
+      ${renderCoreMetric('Companion',companion,'동반번호·쌍번호 강도')}
+      ${renderCoreMetric('Trend',trend,'최근 흐름과 장기 출현')}
+      ${renderCoreMetric('Structure',structure,'구간균형·홀짝구성')}
+      ${renderCoreMetric('Learning',longlearn,'과거 적중·구조학습')}
+    </div>
+
+    <div class="ai-core-title">Pattern Engine 연동 구조</div>
+    <div class="ai-core-grid">
+      ${patternBlock}
+    </div>
+
+    <details class="ai-score-detail">
+      <summary>AI 계산 근거 자세히 보기</summary>
+      <p class="combo-guide">기존 원점수: 동반 ${Math.round(c.parts.companion)} · 균형 ${c.parts.balance} · 홀짝 ${c.parts.oddEven} · 추세 ${(c.parts.recent||0)+(c.parts.long||0)} · 장기 ${Math.round(c.parts.historical||0)} · 학습 ${Math.round(c.parts.learned||0)}</p>
+      <p class="combo-guide">Pattern Engine 영역은 표시 구조를 먼저 완성한 상태입니다. pattern.html의 점수 저장 구조를 연결하면 Pattern · Replay · Flow · Dream 점수가 자동 표시됩니다.</p>
+      <p class="combo-guide">Confidence는 현재 기존 AI 엔진 기준의 예비 신뢰도입니다. 당첨 확률이 아니라 분석 근거의 일관성 표시입니다.</p>
     </details>
   </div>`;
 }
+
 function renderRankedCombos(data){
   const combos=makeRankedCombos(data);
   if(!combos.length)return`<div class="combo-card" style="margin:10px 0;background:#fff7e6"><b>🏆 AI 조합 랭킹</b><p class="combo-guide">추천조합을 만들 만큼 동반번호가 부족합니다. 전체 회차로 바꿔보세요.</p></div>`;
@@ -945,3 +1047,34 @@ function renderDreamPreviewResult(info){
   `;
   document.head.appendChild(st);
 })();
+
+
+(function injectAIScoreV163Style(){
+  if(document.getElementById('aiScoreV163Style'))return;
+  const st=document.createElement('style');
+  st.id='aiScoreV163Style';
+  st.textContent=`
+    .ai-score-v163{padding:12px}
+    .ai-core-summary{display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:8px;margin:10px 0}
+    .ai-core-summary div{background:#fff;border:1px solid #f5e6bd;border-radius:14px;padding:10px;text-align:center}
+    .ai-core-summary b{display:block;color:#8a5b00;font-size:18px}
+    .ai-core-summary span{display:block;color:#667085;font-size:11px;margin-top:2px}
+    .ai-core-title{font-size:12px;font-weight:900;color:#8a5b00;margin:12px 0 6px}
+    .ai-core-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .ai-core-metric{background:#fff;border:1px solid #f5e6bd;border-radius:14px;padding:9px}
+    .ai-core-metric.pending{background:#fffdf7;opacity:.86}
+    .ai-core-metric-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+    .ai-core-metric-top b{color:#475467;font-size:13px}
+    .ai-core-metric-top span{color:#8a5b00;font-size:12px;font-weight:900}
+    .ai-core-bar{height:8px;background:#f6edd3;border-radius:999px;overflow:hidden;margin:7px 0}
+    .ai-core-bar i{display:block;height:100%;background:#d79b21;border-radius:999px}
+    .ai-core-metric.pending .ai-core-bar i{background:#cbd5e1}
+    .ai-core-metric p{margin:0;color:#667085;font-size:11px;line-height:1.35}
+    @media(max-width:430px){
+      .ai-core-summary{grid-template-columns:1fr}
+      .ai-core-grid{grid-template-columns:1fr}
+    }
+  `;
+  document.head.appendChild(st);
+})();
+
