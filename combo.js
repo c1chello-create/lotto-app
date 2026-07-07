@@ -1798,3 +1798,390 @@ function renderAIScoreCard(c,maxes){
   `;
   document.head.appendChild(st);
 })();
+
+
+
+/* =========================================================
+   v1.6.6 Final
+   - 산출근거 100% 실시간 재계산
+   - Replay / Flow / Dream 근거 상세화
+   - AI Score 계산식 시각화
+   - Pattern Engine + Dream Chain 통합 후보 생성
+   - localStorage 저장값은 참고만 하고, combo 화면에서는 현재 조건 기준 재계산
+========================================================= */
+
+function v166Clamp(v,min=0,max=100){
+  return Math.max(min, Math.min(max, Math.round(Number(v)||0)));
+}
+function v166Nums(nums){
+  return Array.from(new Set((nums||[]).map(Number).filter(n=>n>=1&&n<=45))).sort((a,b)=>a-b);
+}
+function v166Rows(){
+  const base = Array.isArray(lottoData) ? lottoData : (Array.isArray(window.LOTTO_DATA) ? window.LOTTO_DATA : []);
+  return base.slice().sort((a,b)=>Number(a.round)-Number(b.round));
+}
+function v166RangeRows(){
+  const rows=v166Rows();
+  if(matchRange==='50') return rows.slice(-50);
+  if(matchRange==='100') return rows.slice(-100);
+  return rows;
+}
+function v166Pool(row){
+  if(!row)return [];
+  const arr=(row.numbers||[]).map(Number).filter(n=>n>=1&&n<=45);
+  if(includeBonus && includeBonus() && row.bonus) arr.push(Number(row.bonus));
+  return arr;
+}
+function v166Hit(row,nums){
+  const s=new Set(v166Pool(row));
+  return nums.filter(n=>s.has(n)).length;
+}
+function v166SampleRows(nums){
+  const rows=v166RangeRows();
+  const minHit = nums.length>=4 ? 3 : Math.max(2, nums.length);
+  let samples = rows.filter(r=>v166Hit(r,nums)>=minHit);
+  if(samples.length<6 && minHit>1) samples = rows.filter(r=>v166Hit(r,nums)>=minHit-1);
+  return samples.slice(-50);
+}
+function v166Prev(rows,row,gap){
+  const r=Number(row.round);
+  const exact=rows.find(x=>Number(x.round)===r-gap);
+  if(exact)return exact;
+  const idx=rows.findIndex(x=>Number(x.round)===r);
+  return idx>=gap ? rows[idx-gap] : null;
+}
+function v166FreqByGaps(rows,samples,gaps,nums){
+  const freq={}, keep={}, byGap={}, pair={}, triples={};
+  let comparisons=0, reproduced=0, preserved=0;
+
+  samples.forEach(row=>{
+    gaps.forEach(g=>{
+      const prev=v166Prev(rows,row,g);
+      if(!prev)return;
+      comparisons++;
+      byGap[g]=byGap[g]||{checks:0,hits:0,freq:{}};
+      byGap[g].checks++;
+
+      const pool=v166Pool(prev);
+      const hitNums=nums.filter(n=>pool.includes(n));
+      if(hitNums.length){
+        reproduced++;
+        byGap[g].hits++;
+      }
+      hitNums.forEach(n=>{
+        keep[n]=(keep[n]||0)+1;
+        preserved++;
+      });
+      pool.forEach(n=>{
+        freq[n]=(freq[n]||0)+1;
+        byGap[g].freq[n]=(byGap[g].freq[n]||0)+1;
+      });
+
+      // pair / 3-number groups inside each previous round
+      const unique=Array.from(new Set(pool)).sort((a,b)=>a-b);
+      for(let i=0;i<unique.length;i++){
+        for(let j=i+1;j<unique.length;j++){
+          const k=`${unique[i]}-${unique[j]}`;
+          pair[k]=(pair[k]||0)+1;
+          for(let z=j+1;z<unique.length;z++){
+            const t=`${unique[i]}-${unique[j]}-${unique[z]}`;
+            triples[t]=(triples[t]||0)+1;
+          }
+        }
+      }
+    });
+  });
+
+  const list=Object.entries(freq).map(([n,c])=>({n:Number(n),count:c}))
+    .sort((a,b)=>b.count-a.count||a.n-b.n);
+  const keepList=Object.entries(keep).map(([n,c])=>({n:Number(n),count:c}))
+    .sort((a,b)=>b.count-a.count||a.n-b.n);
+  const pairList=Object.entries(pair).map(([k,c])=>({nums:k.split('-').map(Number),count:c}))
+    .sort((a,b)=>b.count-a.count||a.nums[0]-b.nums[0]).slice(0,8);
+  const tripleList=Object.entries(triples).map(([k,c])=>({nums:k.split('-').map(Number),count:c}))
+    .sort((a,b)=>b.count-a.count||a.nums[0]-b.nums[0]).slice(0,8);
+
+  return {gaps,comparisons,reproduced,preserved,list,keepList,pairList,tripleList,byGap};
+}
+function v166ReplayForCandidates(rows,samples,candidates,mode){
+  const picks=candidates.slice(0,8).map(x=>x.n);
+  const gaps=mode==='3계열' ? [3,6,9,12,15] : [2,4,6,8,10,12,14,16,18,20,22,24];
+  let checks=0,hits=0;
+  const hitMap={};
+  picks.forEach(n=>hitMap[n]=0);
+
+  samples.forEach(row=>{
+    gaps.forEach(g=>{
+      const prev=v166Prev(rows,row,g);
+      if(!prev)return;
+      checks++;
+      const pool=v166Pool(prev);
+      const local=picks.filter(n=>pool.includes(n));
+      if(local.length){
+        hits++;
+        local.forEach(n=>hitMap[n]++);
+      }
+    });
+  });
+
+  const topNums=Object.entries(hitMap).map(([n,c])=>({n:Number(n),count:c}))
+    .filter(x=>x.count>0).sort((a,b)=>b.count-a.count||a.n-b.n);
+  const rate=checks?hits/checks:0;
+  const score=v166Clamp(rate*78 + Math.min(22,(topNums[0]?.count||0)*2.2));
+  return {score,checks,hits,rate,topNums};
+}
+function v166FlowChains(rows,samples,mode){
+  const gaps=mode==='3계열' ? [3,6,9,12,15] : [2,4,6,8,10,12];
+  const chainMap={}, preserveMap={};
+  samples.forEach(row=>{
+    gaps.forEach(g=>{
+      const a=v166Prev(rows,row,g*2);
+      const b=v166Prev(rows,row,g);
+      if(!a||!b)return;
+      const aa=v166Pool(a), bb=v166Pool(b), cc=v166Pool(row);
+      aa.forEach(x=>bb.forEach(y=>cc.forEach(z=>{
+        const key=`${x}-${y}-${z}`;
+        chainMap[key]=(chainMap[key]||0)+1;
+        if(x===y || y===z || x===z) preserveMap[key]=(preserveMap[key]||0)+1;
+      })));
+    });
+  });
+  const list=Object.entries(chainMap).map(([k,c])=>({
+    chain:k.split('-').map(Number), count:c, preserve:preserveMap[k]||0
+  })).sort((a,b)=>b.count-a.count || b.preserve-a.preserve || a.chain[0]-b.chain[0]).slice(0,12);
+  const max=list[0]?.count||0;
+  const density=list.length?Math.round(list.slice(0,5).reduce((s,x)=>s+x.count,0)/Math.max(1,list.length)):0;
+  const score=v166Clamp(max*8 + density*2 + Math.min(20,list.length*2));
+  return {score,list,max,density};
+}
+function v166MergeCandidateScores(nums,main,other,replay,flow){
+  const scoreMap={};
+  function add(n,score,tag){
+    n=Number(n);
+    if(n<1||n>45)return;
+    scoreMap[n]=scoreMap[n]||{n,score:0,tags:new Set(),pattern:0,replay:0,flow:0,base:0};
+    scoreMap[n].score+=score;
+    scoreMap[n].tags.add(tag);
+    if(tag==='패턴') scoreMap[n].pattern+=score;
+    if(tag==='재현') scoreMap[n].replay+=score;
+    if(tag==='흐름') scoreMap[n].flow+=score;
+    if(tag==='기준') scoreMap[n].base+=score;
+  }
+
+  const maxMain=main.list[0]?.count||1;
+  main.list.slice(0,12).forEach((x,i)=>add(x.n, Math.max(2,32*(x.count/maxMain)-i), '패턴'));
+  const maxOther=other.list[0]?.count||1;
+  other.list.slice(0,8).forEach((x,i)=>add(x.n, Math.max(1,14*(x.count/maxOther)-i), '보조'));
+
+  replay.topNums.slice(0,8).forEach((x,i)=>add(x.n, Math.max(2,26*(x.count/(replay.topNums[0]?.count||1))-i), '재현'));
+  flow.list.slice(0,8).forEach((x,i)=>x.chain.forEach(n=>add(n, Math.max(1,18*(x.count/(flow.list[0]?.count||1))-i), '흐름')));
+  nums.forEach(n=>add(n, 10, '기준'));
+
+  return Object.values(scoreMap).map(x=>({
+    n:x.n,
+    score:Math.round(x.score),
+    tags:Array.from(x.tags),
+    detail:x
+  })).sort((a,b)=>b.score-a.score||a.n-b.n);
+}
+function readPatternScoreFor(nums){
+  nums=v166Nums(nums);
+  const rows=v166RangeRows();
+  const samples=v166SampleRows(nums);
+
+  if(!rows.length || !nums.length){
+    return {
+      key:nums.join(','), pattern:0,replay:0,flow:0,dream:0,confidence:55,
+      mode:'데이터 대기', sampleCount:0, comparisons:0, keepCount:0, inputCount:nums.length,
+      topNumbers:[], replayTop:[], chains:[], pairGroups:[], tripleGroups:[],
+      reasons:{pattern:'데이터 대기',replay:'재현번호 부족',flow:'흐름 후보 부족',dream:'Dream 대기'}
+    };
+  }
+
+  const p2=v166FreqByGaps(rows,samples,[2,4,6,8,10,12,14,16,18,20,22,24],nums);
+  const p3=v166FreqByGaps(rows,samples,[3,6,9,12,15],nums);
+  const top2=p2.list[0]?.count||0;
+  const top3=p3.list[0]?.count||0;
+  const mode=top2>=top3?'2계열':'3계열';
+  const main=mode==='2계열'?p2:p3;
+  const other=mode==='2계열'?p3:p2;
+
+  const repeatRate=main.comparisons?main.reproduced/main.comparisons:0;
+  const concentration=main.comparisons?((main.list[0]?.count||0)/main.comparisons):0;
+  const topSet=new Set(main.list.slice(0,10).map(x=>x.n));
+  const keepCount=nums.filter(n=>topSet.has(n)).length;
+  const keepRate=nums.length?keepCount/nums.length:0;
+
+  const preliminary=main.list.slice(0,10).map((x,i)=>({n:x.n,count:x.count,score:v166Clamp((x.count/(main.list[0]?.count||1))*80 + Math.max(0,20-i*2))}));
+  nums.forEach(n=>{ if(!preliminary.some(x=>x.n===n)) preliminary.push({n,count:0,score:12}); });
+
+  const replay=v166ReplayForCandidates(rows,samples,preliminary,mode);
+  const flow=v166FlowChains(rows,samples,mode);
+  const merged=v166MergeCandidateScores(nums,main,other,replay,flow);
+
+  const finalNums=merged.slice(0,6).map(x=>x.n).sort((a,b)=>a-b);
+  const dreamKeep=finalNums.filter(n=>nums.includes(n)).length;
+  const dreamSupport=finalNums.filter(n=>{
+    const m=merged.find(x=>x.n===n);
+    return m && (m.tags.includes('재현') || m.tags.includes('흐름'));
+  }).length;
+
+  const patternScore=v166Clamp(repeatRate*34 + concentration*34 + keepRate*18 + Math.min(14,(main.list[0]?.count||0)/2));
+  const replayScore=replay.score;
+  const flowScore=flow.score;
+  const dreamScore=v166Clamp(patternScore*0.24 + replayScore*0.28 + flowScore*0.24 + (dreamKeep/Math.max(1,nums.length))*12 + (dreamSupport/6)*12);
+  const confidence=v166Clamp(58 + patternScore*0.13 + replayScore*0.15 + flowScore*0.08 + dreamScore*0.12,55,98);
+
+  const result={
+    key:nums.join(','),
+    pattern:patternScore,
+    replay:replayScore,
+    flow:flowScore,
+    dream:dreamScore,
+    confidence,
+    mode,
+    sampleCount:samples.length,
+    comparisons:main.comparisons,
+    repeatRate:Math.round(repeatRate*100),
+    concentration:Math.round(concentration*100),
+    keepCount,
+    inputCount:nums.length,
+    topNumbers:finalNums,
+    patternTop:main.list.slice(0,8),
+    replayTop:replay.topNums.slice(0,8),
+    chains:flow.list.slice(0,6),
+    pairGroups:main.pairList.slice(0,5),
+    tripleGroups:main.tripleList.slice(0,5),
+    dreamKeep,
+    dreamSupport,
+    reasons:{
+      pattern:`${mode} 우세 · TOP ${main.list[0]?.n||'-'} ${main.list[0]?.count||0}회 / 비교 ${main.comparisons}`,
+      replay:`${replay.hits}/${replay.checks} 재현 · 재현율 ${Math.round(replay.rate*100)}% · 핵심 ${replay.topNums.slice(0,3).map(x=>x.n).join(', ')||'-'}`,
+      flow:flow.list.length ? `최고 흐름 ${flow.list[0].chain.join('→')} · ${flow.list[0].count}회 · 흐름후보 ${flow.list.length}개` : '반복 흐름 후보 부족',
+      dream:`최종후보 ${finalNums.join(', ')} · 기준유지 ${dreamKeep}/${nums.length} · 재현/흐름 지지 ${dreamSupport}개`
+    }
+  };
+
+  try{ localStorage.setItem('pattern_engine_result', JSON.stringify(result)); }catch(e){}
+  return {
+    ...result,
+    patternNote:result.reasons.pattern,
+    replayNote:result.reasons.replay,
+    flowNote:result.reasons.flow,
+    dreamNote:result.reasons.dream
+  };
+}
+function v166ReasonBlock(p){
+  const top=p.topNumbers||[];
+  const patternTop=(p.patternTop||[]).slice(0,5).map(x=>`${x.n}번 ${x.count}회`).join(' · ') || '없음';
+  const replay=(p.replayTop||[]).slice(0,5).map(x=>`${x.n}번 ${x.count}회`).join(' · ') || '재현번호 부족';
+  const flow=(p.chains||[]).slice(0,4).map(x=>`${x.chain.join('→')} ${x.count}회`).join(' · ') || '흐름 후보 부족';
+  const groups2=(p.pairGroups||[]).slice(0,3).map(x=>`${x.nums.join('-')} ${x.count}회`).join(' · ') || '부족';
+  const groups3=(p.tripleGroups||[]).slice(0,3).map(x=>`${x.nums.join('-')} ${x.count}회`).join(' · ') || '부족';
+  return `<div class="ai-engine-reason v166-reason">
+    <b>Pattern Engine 산출근거</b>
+    <p class="combo-guide">우세계열: ${p.mode} · 샘플 ${p.sampleCount}회 · 비교 ${p.comparisons}회 · 기준번호 유지 ${p.keepCount}/${p.inputCount}</p>
+    <p class="combo-guide">TOP 후보: ${top.length?top.map(n=>`${n}번`).join(' · '):'없음'}</p>
+    <p class="combo-guide">패턴번호: ${patternTop}</p>
+    <p class="combo-guide">재현번호: ${replay}</p>
+    <p class="combo-guide">Dream Chain 흐름: ${flow}</p>
+    <p class="combo-guide">2번호군: ${groups2}</p>
+    <p class="combo-guide">3번호군: ${groups3}</p>
+  </div>`;
+}
+function v166FormulaBlock(vals){
+  return `<div class="ai-score-formula">
+    <b>AI Score 계산식</b>
+    <div class="formula-grid">
+      <span>기존 AI</span><b>${vals.baseAvg}</b>
+      <span>Pattern 평균</span><b>${vals.patternAvg}</b>
+      <span>기존 반영</span><b>${Math.round(vals.rawBase)}</b>
+      <span>Pattern 반영</span><b>${Math.round(vals.rawPattern)}</b>
+      <span>보정 반영</span><b>${Math.round(vals.rawTrust)}</b>
+      <span>최종</span><b>${vals.total}</b>
+    </div>
+    <p class="combo-guide">계산: 기존 AI 45% + Pattern Engine 40% + 기존 신뢰보정 15%</p>
+  </div>`;
+}
+function renderAIScoreCard(c,maxes){
+  const companion=pctOf(c.parts.companion,maxes.companion);
+  const trend=pctOf((c.parts.recent||0)+(c.parts.long||0),maxes.trend);
+  const structure=pctOf((c.parts.balance||0)+(c.parts.oddEven||0),maxes.structure);
+  const longlearn=pctOf((c.parts.historical||0)+(c.parts.learned||0),maxes.longlearn);
+
+  const p=readPatternScoreFor(c.nums);
+  const patternScore=v166Clamp(p.pattern);
+  const replayScore=v166Clamp(p.replay);
+  const flowScore=v166Clamp(p.flow);
+  const dreamScore=v166Clamp(p.dream);
+
+  const baseAvg=Math.round((companion+trend+structure+longlearn)/4);
+  const patternAvg=Math.round((patternScore+replayScore+flowScore+dreamScore)/4);
+
+  const rawBase=baseAvg*0.45;
+  const rawPattern=patternAvg*0.40;
+  const rawTrust=(c.trust||0)*0.15;
+  const total=v166Clamp(rawBase+rawPattern+rawTrust,55,98);
+  const confidence=v166Clamp((p.confidence||70)*0.60 + baseAvg*0.20 + total*0.20,55,98);
+  const coreGrade=aiScoreGrade(total);
+  const confidenceGrade=aiScoreGrade(confidence);
+
+  return `<div class="ai-score-card ai-score-v166">
+    <div class="ai-score-head">
+      <b>AI Score Card</b>
+      <span>${coreGrade}등급 · ${total}점</span>
+    </div>
+
+    <div class="ai-core-summary">
+      <div><b>${coreGrade}</b><span>AI Score</span></div>
+      <div><b>${confidence}%</b><span>Confidence ${confidenceGrade}</span></div>
+      <div><b>${aiScoreJudge(total)}</b><span>AI 판단</span></div>
+    </div>
+
+    <div class="ai-core-title">기존 AI 엔진</div>
+    <div class="ai-core-grid">
+      ${renderCoreMetric('Companion',companion,'동반번호·쌍번호 강도')}
+      ${renderCoreMetric('Trend',trend,'최근 흐름과 장기 출현')}
+      ${renderCoreMetric('Structure',structure,'구간균형·홀짝구성')}
+      ${renderCoreMetric('Learning',longlearn,'과거 적중·구조학습')}
+    </div>
+
+    <div class="ai-core-title">Pattern Engine 연동</div>
+    <div class="ai-core-grid">
+      ${renderCoreMetric('Pattern',patternScore,p.patternNote)}
+      ${renderCoreMetric('Replay',replayScore,p.replayNote)}
+      ${renderCoreMetric('Flow',flowScore,p.flowNote)}
+      ${renderCoreMetric('Dream',dreamScore,p.dreamNote)}
+    </div>
+
+    ${v166ReasonBlock(p)}
+    ${v166FormulaBlock({baseAvg,patternAvg,rawBase,rawPattern,rawTrust,total})}
+
+    <details class="ai-score-detail">
+      <summary>AI 계산 근거 자세히 보기</summary>
+      <p class="combo-guide">기존 원점수: 동반 ${Math.round(c.parts.companion)} · 균형 ${c.parts.balance} · 홀짝 ${c.parts.oddEven} · 추세 ${(c.parts.recent||0)+(c.parts.long||0)} · 장기 ${Math.round(c.parts.historical||0)} · 학습 ${Math.round(c.parts.learned||0)}</p>
+      <p class="combo-guide">Pattern: ${p.reasons.pattern}</p>
+      <p class="combo-guide">Replay: ${p.reasons.replay}</p>
+      <p class="combo-guide">Flow: ${p.reasons.flow}</p>
+      <p class="combo-guide">Dream: ${p.reasons.dream}</p>
+      <p class="combo-guide">Confidence는 당첨 확률이 아니라 분석 근거의 일관성 표시입니다.</p>
+    </details>
+  </div>`;
+}
+
+(function injectV166Style(){
+  if(document.getElementById('aiScoreV166FinalStyle'))return;
+  const st=document.createElement('style');
+  st.id='aiScoreV166FinalStyle';
+  st.textContent=`
+    .ai-score-v166 .v166-reason{background:#fffdf6;border:1px dashed #e1bd5c;border-radius:16px;padding:14px;margin-top:12px}
+    .ai-score-v166 .v166-reason b{display:block;color:#8a5b00;margin-bottom:8px}
+    .ai-score-v166 .v166-reason p{margin:6px 0}
+    .ai-score-formula{margin-top:12px;padding:14px;border:1px solid #ead48e;border-radius:16px;background:#fffaf0}
+    .ai-score-formula>b{display:block;color:#8a5b00;margin-bottom:10px}
+    .formula-grid{display:grid;grid-template-columns:1fr auto;gap:8px 12px;font-size:14px}
+    .formula-grid span{color:#6b7280}
+    .formula-grid b{color:#123466;text-align:right}
+  `;
+  document.head.appendChild(st);
+})();
