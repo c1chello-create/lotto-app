@@ -207,20 +207,176 @@ function aiScoreJudge(score){
   if(score>=58)return '보조 후보';
   return '실험 후보';
 }
-function readPatternScoreFor(nums){
-  // 향후 pattern.html이 localStorage에 저장하면 자동 연동될 수 있도록 준비한 구조입니다.
-  // 현재 v1.6.3에서는 표시 구조 우선 완성 단계이므로, 저장값이 없으면 null을 반환합니다.
-  try{
-    const raw = localStorage.getItem('pattern_ai_score_v1') || localStorage.getItem('patternAiScore');
-    if(!raw)return null;
-    const data = JSON.parse(raw);
-    const key = nums.slice().sort((a,b)=>a-b).join(',');
-    if(data.key && data.key !== key)return null;
-    return data;
-  }catch(e){
-    return null;
-  }
+
+function uniqNums(nums){
+  return Array.from(new Set((nums||[]).map(Number).filter(n=>n>=1&&n<=45))).sort((a,b)=>a-b);
 }
+function roundsInScope(){
+  if(!window.LOTTO_DATA || !LOTTO_DATA.length)return [];
+  const scope = window.currentScope || window.selectedScope || 'all';
+  if(scope==='50') return LOTTO_DATA.slice(-50);
+  if(scope==='100') return LOTTO_DATA.slice(-100);
+  return LOTTO_DATA.slice();
+}
+function roundNums(row,includeBonus=true){
+  const arr = (row.numbers || row.nums || row.drwtNo || []).map(Number).filter(Boolean);
+  if(includeBonus && row.bonus) arr.push(Number(row.bonus));
+  return arr;
+}
+function countMatches(row, nums, includeBonus=true){
+  const set = new Set(roundNums(row,includeBonus));
+  return nums.filter(n=>set.has(n)).length;
+}
+function comboRowsFor(nums, minHit=3){
+  const includeBonus = !!(document.querySelector('#includeBonus')?.checked ?? true);
+  return roundsInScope().filter(r=>countMatches(r,nums,includeBonus)>=minHit);
+}
+function numberFrequency(rows, excludeNums=[]){
+  const ex = new Set(excludeNums);
+  const m = {};
+  rows.forEach(r=>{
+    (r.numbers||[]).forEach(n=>{
+      n=Number(n);
+      if(n>=1&&n<=45&&!ex.has(n))m[n]=(m[n]||0)+1;
+    });
+    if(r.bonus && !ex.has(Number(r.bonus)))m[Number(r.bonus)]=(m[Number(r.bonus)]||0)+1;
+  });
+  return Object.entries(m).map(([n,c])=>({n:Number(n),count:c})).sort((a,b)=>b.count-a.count||a.n-b.n);
+}
+function getPrevRound(row, gap){
+  const round = Number(row.round);
+  if(!round || !window.LOTTO_DATA)return null;
+  return LOTTO_DATA.find(x=>Number(x.round)===round-gap) || null;
+}
+function patternSeriesScores(nums){
+  nums = uniqNums(nums);
+  const samples = comboRowsFor(nums, Math.min(3, Math.max(2, nums.length-1))).slice(-50);
+  const rows = samples.length ? samples : roundsInScope().slice(-50);
+  const twoGaps = [2,4,6,8,10,12,14,16,18,20,22,24];
+  const threeGaps = [3,6,9,12,15];
+
+  function gapFreq(gaps){
+    const freq = {};
+    let compare = 0;
+    rows.forEach(r=>{
+      gaps.forEach(g=>{
+        const prev = getPrevRound(r,g);
+        if(!prev)return;
+        compare++;
+        (prev.numbers||[]).forEach(n=>freq[n]=(freq[n]||0)+1);
+        if(prev.bonus)freq[prev.bonus]=(freq[prev.bonus]||0)+1;
+      });
+    });
+    return {compare, list:Object.entries(freq).map(([n,c])=>({n:Number(n),count:c})).sort((a,b)=>b.count-a.count||a.n-b.n)};
+  }
+
+  const two = gapFreq(twoGaps);
+  const three = gapFreq(threeGaps);
+  const maxTwo = two.list[0]?.count || 1;
+  const maxThree = three.list[0]?.count || 1;
+
+  const candidateSet = new Set(nums);
+  numberFrequency(rows, nums).slice(0,8).forEach(x=>candidateSet.add(x.n));
+  two.list.slice(0,8).forEach(x=>candidateSet.add(x.n));
+  three.list.slice(0,8).forEach(x=>candidateSet.add(x.n));
+
+  const candidateScores = [];
+  candidateSet.forEach(n=>{
+    const t = two.list.find(x=>x.n===n)?.count || 0;
+    const th = three.list.find(x=>x.n===n)?.count || 0;
+    const pair = numberFrequency(rows, []).find(x=>x.n===n)?.count || 0;
+    const score = Math.round((t/maxTwo)*45 + (th/maxThree)*30 + Math.min(25, pair*2));
+    candidateScores.push({n,score,two:t,three:th,pair});
+  });
+  candidateScores.sort((a,b)=>b.score-a.score||a.n-b.n);
+
+  return {samples, two, three, candidateScores};
+}
+function replayScoreFor(nums){
+  nums = uniqNums(nums);
+  const rows = comboRowsFor(nums, Math.min(3, Math.max(2, nums.length-1))).slice(-50);
+  if(rows.length<2)return {score:0, rate:0, top:[]};
+  const gaps = [2,4,6,8,10,12,14,16,18,20,22,24,3,6,9,12,15];
+  const freq = {};
+  let checked=0, reproduced=0;
+  rows.forEach(r=>{
+    gaps.forEach(g=>{
+      const prev=getPrevRound(r,g);
+      if(!prev)return;
+      checked++;
+      const arr=roundNums(prev,true);
+      const hit=nums.filter(n=>arr.includes(n));
+      if(hit.length>0)reproduced++;
+      hit.forEach(n=>freq[n]=(freq[n]||0)+1);
+    });
+  });
+  const top=Object.entries(freq).map(([n,c])=>({n:Number(n),count:c})).sort((a,b)=>b.count-a.count||a.n-b.n);
+  const rate=checked?reproduced/checked:0;
+  const score=Math.round(Math.min(100, rate*65 + Math.min(35,(top[0]?.count||0)*4)));
+  return {score,rate,top,checked,reproduced};
+}
+function flowScoreFor(nums){
+  nums = uniqNums(nums);
+  const rows = comboRowsFor(nums, Math.min(3, Math.max(2, nums.length-1))).slice(-50);
+  const gaps = [2,4,6,3,6,9];
+  const chains = {};
+  rows.forEach(r=>{
+    gaps.forEach(g=>{
+      const a=getPrevRound(r,g*2);
+      const b=getPrevRound(r,g);
+      if(!a||!b)return;
+      const aa=roundNums(a,true).filter(n=>nums.includes(n));
+      const bb=roundNums(b,true).filter(n=>nums.includes(n));
+      const cc=roundNums(r,true).filter(n=>nums.includes(n));
+      aa.forEach(x=>bb.forEach(y=>cc.forEach(z=>{
+        const k=`${x}-${y}-${z}`;
+        chains[k]=(chains[k]||0)+1;
+      })));
+    });
+  });
+  const list=Object.entries(chains).map(([k,c])=>({chain:k.split('-').map(Number),count:c})).sort((a,b)=>b.count-a.count||a.chain[0]-b.chain[0]);
+  const max=list[0]?.count||0;
+  const distinct=list.length;
+  const score=Math.round(Math.min(100, max*9 + Math.min(35, distinct*2)));
+  return {score,list,max,distinct};
+}
+function dreamScoreFor(nums){
+  const replay = replayScoreFor(nums);
+  const flow = flowScoreFor(nums);
+  const series = patternSeriesScores(nums);
+  const topNums = new Set([
+    ...replay.top.slice(0,6).map(x=>x.n),
+    ...series.two.list.slice(0,6).map(x=>x.n),
+    ...series.three.list.slice(0,6).map(x=>x.n),
+  ]);
+  const preserved = uniqNums(nums).filter(n=>topNums.has(n)).length;
+  const score=Math.round(Math.min(100, replay.score*0.35 + flow.score*0.35 + Math.min(30,preserved*8)));
+  return {score,preserved,replay,flow,series};
+}
+function calcPatternLinkedScoreFor(nums){
+  nums = uniqNums(nums);
+  if(!nums.length)return null;
+  const series = patternSeriesScores(nums);
+  const replay = replayScoreFor(nums);
+  const flow = flowScoreFor(nums);
+  const dream = dreamScoreFor(nums);
+  const pattern = Math.round(Math.min(100, (series.candidateScores[0]?.score||0)));
+  return {
+    key: nums.join(','),
+    pattern,
+    replay: replay.score,
+    flow: flow.score,
+    dream: dream.score,
+    patternNote: `2계열 ${series.two.list[0]?.count||0} · 3계열 ${series.three.list[0]?.count||0}`,
+    replayNote: `${replay.reproduced||0}/${replay.checked||0} 재현`,
+    flowNote: `흐름 ${flow.max||0}회 · ${flow.distinct||0}개`,
+    dreamNote: `유지 ${dream.preserved||0}개`,
+  };
+}
+function readPatternScoreFor(nums){
+  return calcPatternLinkedScoreFor(nums);
+}
+
 function renderCoreMetric(label,score,note){
   const safe = Math.max(0,Math.min(100,Math.round(score||0)));
   return `<div class="ai-core-metric">
@@ -257,10 +413,10 @@ function renderAIScoreCard(c,maxes){
   const confidenceGrade = aiScoreGrade(confidence);
 
   const patternBlock = patternLink ? `
-    ${renderCoreMetric('Pattern',patternScore,'pattern.html 연동 점수')}
-    ${renderCoreMetric('Replay',replayScore,'패턴 재현율')}
-    ${renderCoreMetric('Flow',flowScore,'흐름분석')}
-    ${renderCoreMetric('Dream',dreamScore,'Dream Chain 반영')}
+    ${renderCoreMetric('Pattern',patternScore,patternLink.patternNote || '패턴 후보 강도')}
+    ${renderCoreMetric('Replay',replayScore,patternLink.replayNote || '패턴 재현율')}
+    ${renderCoreMetric('Flow',flowScore,patternLink.flowNote || '흐름분석')}
+    ${renderCoreMetric('Dream',dreamScore,patternLink.dreamNote || 'Dream Chain 반영')}
   ` : `
     ${renderPendingMetric('Pattern','pattern.html 연동 예정')}
     ${renderPendingMetric('Replay','재현율 연동 예정')}
@@ -305,7 +461,7 @@ function renderAIScoreCard(c,maxes){
     <details class="ai-score-detail">
       <summary>AI 계산 근거 자세히 보기</summary>
       <p class="combo-guide">기존 원점수: 동반 ${Math.round(c.parts.companion)} · 균형 ${c.parts.balance} · 홀짝 ${c.parts.oddEven} · 추세 ${(c.parts.recent||0)+(c.parts.long||0)} · 장기 ${Math.round(c.parts.historical||0)} · 학습 ${Math.round(c.parts.learned||0)}</p>
-      <p class="combo-guide">Pattern Engine 영역은 표시 구조를 먼저 완성한 상태입니다. pattern.html의 점수 저장 구조를 연결하면 Pattern · Replay · Flow · Dream 점수가 자동 표시됩니다.</p>
+      <p class="combo-guide">Pattern Engine 영역은 현재 combo.html 내부 데이터로 실시간 계산됩니다. pattern.html과 동일한 방향의 Pattern · Replay · Flow · Dream 점수를 AI Score Card에 표시합니다.</p>
       <p class="combo-guide">Confidence는 현재 기존 AI 엔진 기준의 예비 신뢰도입니다. 당첨 확률이 아니라 분석 근거의 일관성 표시입니다.</p>
     </details>
   </div>`;
