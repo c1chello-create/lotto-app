@@ -2185,3 +2185,258 @@ function renderAIScoreCard(c,maxes){
   `;
   document.head.appendChild(st);
 })();
+
+
+
+/* =========================================================
+   v1.6.7 Final Display Fix
+   - AI Score Card 표시 안정화
+   - renderCompanion 오류가 있어도 조합별 출현 이력은 반드시 표시
+   - Pattern/Dream Chain 계산 오류 시에도 fallback Score Card 표시
+========================================================= */
+
+function v167SafeNum(v, d=0){ v=Number(v); return Number.isFinite(v)?v:d; }
+function v167Clamp(v,min=0,max=100){ return Math.max(min,Math.min(max,Math.round(v167SafeNum(v)))); }
+
+function v167SafePattern(nums){
+  try{
+    const p = readPatternScoreFor(nums);
+    if(p && typeof p === 'object'){
+      p.pattern = v167Clamp(p.pattern);
+      p.replay = v167Clamp(p.replay);
+      p.flow = v167Clamp(p.flow);
+      p.dream = v167Clamp(p.dream);
+      p.confidence = v167Clamp(p.confidence || 70,55,98);
+      p.reasons = p.reasons || {};
+      p.patternNote = p.patternNote || p.reasons.pattern || 'Pattern 계산 완료';
+      p.replayNote = p.replayNote || p.reasons.replay || 'Replay 계산 완료';
+      p.flowNote = p.flowNote || p.reasons.flow || 'Flow 계산 완료';
+      p.dreamNote = p.dreamNote || p.reasons.dream || 'Dream 계산 완료';
+      return p;
+    }
+  }catch(e){
+    console.warn('v1.6.7 Pattern fallback', e);
+  }
+  return {
+    pattern:0,replay:0,flow:0,dream:0,confidence:60,
+    mode:'대기',sampleCount:0,comparisons:0,keepCount:0,inputCount:(nums||[]).length,
+    topNumbers:[],patternTop:[],replayTop:[],chains:[],pairGroups:[],tripleGroups:[],
+    reasons:{
+      pattern:'Pattern 계산 대기',
+      replay:'Replay 계산 대기',
+      flow:'Flow 계산 대기',
+      dream:'Dream 계산 대기'
+    },
+    patternNote:'Pattern 계산 대기',
+    replayNote:'Replay 계산 대기',
+    flowNote:'Flow 계산 대기',
+    dreamNote:'Dream 계산 대기'
+  };
+}
+
+function v167Metric(label,score,note){
+  const safe=v167Clamp(score);
+  return `<div class="ai-core-metric">
+    <div class="ai-core-metric-top"><b>${label}</b><span>${safe}점</span></div>
+    <div class="ai-core-bar"><i style="width:${Math.max(6,safe)}%"></i></div>
+    <p>${note||''}</p>
+  </div>`;
+}
+
+function v167ReasonBlock(p){
+  const top=(p.topNumbers||[]).slice(0,6);
+  const patternTop=(p.patternTop||[]).slice(0,5).map(x=>`${x.n}번 ${x.count}회`).join(' · ') || '표시 가능한 후보 부족';
+  const replay=(p.replayTop||[]).slice(0,5).map(x=>`${x.n}번 ${x.count}회`).join(' · ') || '재현번호 부족';
+  const flow=(p.chains||[]).slice(0,4).map(x=>{
+    const chain = x.chain || x.nums || [];
+    return `${chain.join('→')} ${x.count}회`;
+  }).join(' · ') || '흐름 후보 부족';
+  return `<div class="ai-engine-reason v167-reason">
+    <b>Pattern Engine 산출근거</b>
+    <p class="combo-guide">우세계열: ${p.mode||'-'} · 샘플 ${p.sampleCount||0}회 · 비교 ${p.comparisons||0}회 · 기준번호 유지 ${p.keepCount||0}/${p.inputCount||0}</p>
+    <p class="combo-guide">TOP 후보: ${top.length ? top.map(n=>`${n}번`).join(' · ') : '없음'}</p>
+    <p class="combo-guide">패턴번호: ${patternTop}</p>
+    <p class="combo-guide">재현번호: ${replay}</p>
+    <p class="combo-guide">Dream Chain 흐름: ${flow}</p>
+  </div>`;
+}
+
+function v167AIScoreCard(c,maxes){
+  const companion=pctOf(c.parts.companion,maxes.companion);
+  const trend=pctOf((c.parts.recent||0)+(c.parts.long||0),maxes.trend);
+  const structure=pctOf((c.parts.balance||0)+(c.parts.oddEven||0),maxes.structure);
+  const learning=pctOf((c.parts.historical||0)+(c.parts.learned||0),maxes.longlearn);
+  const p=v167SafePattern(c.nums);
+
+  const patternAvg=Math.round((p.pattern+p.replay+p.flow+p.dream)/4);
+  const baseAvg=Math.round((companion+trend+structure+learning)/4);
+  const total=v167Clamp(baseAvg*0.45 + patternAvg*0.40 + (c.trust||0)*0.15,55,98);
+  const confidence=v167Clamp((p.confidence||70)*0.60 + baseAvg*0.20 + total*0.20,55,98);
+  const grade=aiScoreGrade(total);
+  const confGrade=aiScoreGrade(confidence);
+
+  return `<div class="ai-score-card ai-score-v167">
+    <div class="ai-score-head"><b>AI Score Card</b><span>${grade}등급 · ${total}점</span></div>
+    <div class="ai-core-summary">
+      <div><b>${grade}</b><span>AI Score</span></div>
+      <div><b>${confidence}%</b><span>Confidence ${confGrade}</span></div>
+      <div><b>${aiScoreJudge(total)}</b><span>AI 판단</span></div>
+    </div>
+
+    <div class="ai-core-title">기존 AI 엔진</div>
+    <div class="ai-core-grid">
+      ${v167Metric('Companion',companion,'동반번호·쌍번호 강도')}
+      ${v167Metric('Trend',trend,'최근 흐름과 장기 출현')}
+      ${v167Metric('Structure',structure,'구간균형·홀짝구성')}
+      ${v167Metric('Learning',learning,'과거 적중·구조학습')}
+    </div>
+
+    <div class="ai-core-title">Pattern Engine 연동</div>
+    <div class="ai-core-grid">
+      ${v167Metric('Pattern',p.pattern,p.patternNote)}
+      ${v167Metric('Replay',p.replay,p.replayNote)}
+      ${v167Metric('Flow',p.flow,p.flowNote)}
+      ${v167Metric('Dream',p.dream,p.dreamNote)}
+    </div>
+
+    ${v167ReasonBlock(p)}
+
+    <div class="ai-score-formula">
+      <b>AI Score 계산식</b>
+      <div class="formula-grid">
+        <span>기존 AI 평균</span><b>${baseAvg}</b>
+        <span>Pattern 평균</span><b>${patternAvg}</b>
+        <span>기존 반영 45%</span><b>${Math.round(baseAvg*0.45)}</b>
+        <span>Pattern 반영 40%</span><b>${Math.round(patternAvg*0.40)}</b>
+        <span>신뢰 보정 15%</span><b>${Math.round((c.trust||0)*0.15)}</b>
+        <span>최종</span><b>${total}</b>
+      </div>
+    </div>
+
+    <details class="ai-score-detail">
+      <summary>AI 계산 근거 자세히 보기</summary>
+      <p class="combo-guide">Pattern: ${p.reasons.pattern}</p>
+      <p class="combo-guide">Replay: ${p.reasons.replay}</p>
+      <p class="combo-guide">Flow: ${p.reasons.flow}</p>
+      <p class="combo-guide">Dream: ${p.reasons.dream}</p>
+      <p class="combo-guide">Confidence는 당첨 확률이 아니라 분석 근거의 일관성 표시입니다.</p>
+    </details>
+  </div>`;
+}
+
+function renderAIScoreCard(c,maxes){
+  try{
+    return v167AIScoreCard(c,maxes);
+  }catch(e){
+    console.error('AI Score Card 표시 오류', e);
+    return `<div class="ai-score-card"><div class="ai-score-head"><b>AI Score Card</b><span>표시 오류</span></div><p class="combo-guide">AI Score 표시 중 오류가 발생했지만 조합 분석과 출현이력은 계속 표시됩니다.</p></div>`;
+  }
+}
+
+function v167FallbackRankedCombos(data){
+  let combos=[];
+  try{ combos=makeRankedCombos(data); }catch(e){ console.warn('makeRankedCombos fallback',e); }
+  if(!combos.length){
+    return `<div class="combo-card" style="margin:10px 0;background:#fff7e6"><b>🏆 AI 조합 랭킹 TOP 10</b><p class="combo-guide">현재 조건에서는 추천조합을 만들 만큼 동반번호가 부족합니다.</p></div>`;
+  }
+  const maxes={
+    companion:Math.max(...combos.map(c=>c.parts.companion||0),1),
+    trend:Math.max(...combos.map(c=>(c.parts.recent||0)+(c.parts.long||0)),1),
+    structure:Math.max(...combos.map(c=>(c.parts.balance||0)+(c.parts.oddEven||0)),1),
+    longlearn:Math.max(...combos.map(c=>(c.parts.historical||0)+(c.parts.learned||0)),1)
+  };
+  return `<div class="combo-card" style="margin:10px 0;background:#fff7e6">
+    <b>🏆 AI 조합 랭킹 TOP 10</b>
+    <p class="combo-guide">AI Score Card로 동반성·추세·구조·장기학습·Pattern Engine을 표시합니다.</p>
+    ${combos.map(c=>`<div style="border-top:1px solid #f2e6c9;padding:11px 0">
+      <b style="color:#8a5b00">${c.rank}위 · ${c.grade} · 종합 ${c.trust}점</b>
+      <div class="combo-selected">${c.nums.map(n=>ball(n,true,selectedNums.includes(n)?'selected-ball':'')).join('')}</div>
+      ${renderAIScoreCard(c,maxes)}
+      ${renderComboReport(c.nums)}
+      <div class="combo-btn-row" style="margin-top:8px">
+        <button onclick="saveRecommendedCombo('${c.nums.join(',')}','${c.grade}',${c.trust})">저장</button>
+        <button onclick="analyzeSavedCombo('${c.nums.join(',')}')">적중분석</button>
+      </div>
+    </div>`).join('')}
+  </div>`;
+}
+
+function renderRankedCombos(data){
+  return v167FallbackRankedCombos(data);
+}
+
+function renderCompanion(){
+  try{
+    const data=companionAnalysis();
+    const max=data.top.length?data.top[0].count:1;
+    const threshold=minHit();
+    let html=`<div class="combo-card"><b>🤝 동반번호 추천</b><p class="combo-guide">${selectedNums.map(n=>n+'번').join(', ')} 기준으로, ${threshold}개 이상 함께 나온 회차에서 추가 번호를 집계했습니다.</p>`;
+    if(data.recommend.length){
+      html+=`<div class="combo-card" style="margin:10px 0;background:#f0f7ff"><b>AI 추천 동반번호</b><div class="combo-selected">${data.recommend.map(n=>ball(n,true)).join('')}</div><p class="combo-guide">동반번호는 아래 AI 조합 랭킹에 반영됩니다.</p></div>`;
+      html+=renderRankedCombos(data);
+    }else{
+      html+=`<p class="combo-guide">현재 범위에서는 추천할 동반번호가 없습니다. 최근 100회 또는 전체 회차로 바꿔보세요.</p>`;
+    }
+    html+=data.top.length?data.top.slice(0,10).map(x=>{
+      const w=Math.max(8,Math.round(x.count/max*100));
+      return `<div class="companion-row"><div>${ball(x.n,true)}</div><div class="companion-bar"><i style="width:${w}%"></i></div><div class="companion-count">${x.count}회 · 지수 ${x.index}</div></div>`;
+    }).join(''):`<div class="combo-guide">동반출현 기록이 없습니다.</div>`;
+    html+=`<p class="combo-guide">분석 기준: 조건을 만족한 ${data.rows.length}개 회차에서 추가 번호를 집계했습니다.</p></div>`;
+    $('companion').innerHTML=html;
+  }catch(e){
+    console.error('동반번호/AI Score 표시 오류', e);
+    $('companion').innerHTML=`<div class="combo-card" style="background:#fff7e6"><b>AI Score 표시 오류</b><p class="combo-guide">동반번호 또는 AI Score 표시 중 오류가 발생했습니다. 아래 조합별 출현 이력은 계속 표시합니다.</p></div>`;
+  }
+}
+
+function renderHistory(){
+  try{
+    injectHistoryWideStyle();
+    const matches=rangeMatches();
+    if(!matches.length){
+      $('history').innerHTML=`<div class="combo-card center">조건에 맞는 회차가 없습니다.</div>`;
+      return;
+    }
+    $('history').innerHTML=matches.map(x=>{
+      const row=x.row, hit=x.hit;
+      const tag=`${hit.normal}${hit.bonus&&includeBonus()?'+B':''}개`;
+      const nums=row.numbers.map(n=>tinyBall(n,selectedNums.includes(n)?'selected-ball':'')).join('');
+      return `<div class="combo-row history-wide">
+        <div class="round-cell"><b>${row.round}회</b><span>${row.date}</span></div>
+        <div class="history-balls">${nums}</div>
+        <div>${tinyBall(row.bonus,selectedNums.includes(row.bonus)?'selected-ball':'')}</div>
+        <div><span class="hit-tag">${tag}</span></div>
+      </div>`;
+    }).join('');
+  }catch(e){
+    console.error('조합별 출현 이력 표시 오류', e);
+    $('history').innerHTML=`<div class="combo-card center">조합별 출현 이력 표시 중 오류가 발생했습니다.</div>`;
+  }
+}
+
+function renderAll(){
+  renderDreamBridge();
+  if(!selectedNums.length)return;
+  setStatusText();
+  try{ renderSummary(); }catch(e){ console.error('요약 표시 오류',e); }
+  try{ renderCompanion(); }catch(e){ console.error('AI Score 표시 오류',e); }
+  try{ renderSavedCombos(); }catch(e){ console.error('저장조합 표시 오류',e); }
+  try{ renderHistory(); }catch(e){ console.error('출현이력 표시 오류',e); }
+}
+
+(function injectV167Style(){
+  if(document.getElementById('aiScoreV167FinalStyle'))return;
+  const st=document.createElement('style');
+  st.id='aiScoreV167FinalStyle';
+  st.textContent=`
+    .ai-score-v167 .v167-reason{background:#fffdf6;border:1px dashed #e1bd5c;border-radius:16px;padding:14px;margin-top:12px}
+    .ai-score-v167 .v167-reason b{display:block;color:#8a5b00;margin-bottom:8px}
+    .ai-score-v167 .v167-reason p{margin:6px 0}
+    .ai-score-formula{margin-top:12px;padding:14px;border:1px solid #ead48e;border-radius:16px;background:#fffaf0}
+    .ai-score-formula>b{display:block;color:#8a5b00;margin-bottom:10px}
+    .formula-grid{display:grid;grid-template-columns:1fr auto;gap:8px 12px;font-size:14px}
+    .formula-grid span{color:#6b7280}
+    .formula-grid b{color:#123466;text-align:right}
+  `;
+  document.head.appendChild(st);
+})();
