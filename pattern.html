@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>동반패턴 분석 v0.6.8 🍀</title>
+<title>동반패턴 분석 v0.7 🍀</title>
 <link rel="stylesheet" href="style.css">
 <style>
 body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#101828}
@@ -53,13 +53,33 @@ body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"S
 .both-num{outline:5px solid #ffcf33;box-shadow:0 0 0 4px rgba(52,125,57,.35)}
 
 @media(max-width:430px){.tabs a{font-size:13px}.ball{width:38px;height:38px;font-size:17px}.small-ball{width:28px;height:28px;font-size:12px}.rank{grid-template-columns:38px 1fr 46px}}
+
+/* v0.7 Pattern Purity Engine */
+.purity-stage-card{background:#fffdf6;border:1px solid #e8c875;border-radius:18px;padding:14px;margin:12px}
+.purity-stage-card b{color:#8a5b00}
+.purity-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:10px}
+.purity-grid div{background:#fff;border:1px solid #f2e6c9;border-radius:14px;padding:10px;text-align:center}
+.purity-grid b{display:block;font-size:18px;color:#11366b}
+.purity-grid span{font-size:12px;color:#667085}
+.stage-badge{display:inline-block;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:900;background:#11366b;color:#fff;margin-right:4px}
+.dataset-card{background:#fff;border:1px solid #e7edf5;border-radius:16px;padding:12px;margin:10px 0}
+.dataset-row{border-top:1px solid #eef2f7;padding:9px 0}
+.dataset-row:first-child{border-top:0}
+.dataset-head{display:flex;justify-content:space-between;gap:8px;margin-bottom:6px}
+.dataset-head b{color:#11366b}
+.dataset-head span{font-size:12px;color:#667085}
+.prev-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:8px}
+.prev-item{background:#f8fafc;border:1px solid #eef2f7;border-radius:12px;padding:8px}
+.prev-item b{display:block;color:#8a5b00;font-size:12px;margin-bottom:5px}
+@media(max-width:430px){.purity-grid{grid-template-columns:1fr}.prev-grid{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body>
 <div class="wrap">
 <header class="top">
 <div class="status"><span>9:41</span><span>▮▮▮ Wi‑Fi 100</span></div>
-<div class="titlebar"><a href="index.html">‹</a><div>동반패턴 분석 v0.6.8</div><span>🍀</span></div>
+<div class="titlebar"><a href="index.html">‹</a><div>동반패턴 분석 v0.7</div><span>🍀</span></div>
 <nav class="tabs"><a class="active" href="pattern.html">패턴 분석</a><a href="index.html">상세 분석</a><a href="combo.html">조합 분석</a><a href="#">그래프 분석</a></nav>
 </header>
 <div class="card">
@@ -496,29 +516,182 @@ loadData();
 
 
 <script>
-/* v0.6.8 Stable 저장 객체 정규화 */
+/* Pattern Engine v0.7 - Pattern Purity Engine */
 (function(){
-  if(window.__patternEngineResultV168Bound)return;
-  window.__patternEngineResultV168Bound=true;
-  function safeNum(v,d=0){v=Number(v);return Number.isFinite(v)?v:d}
-  function safeText(v,f='-'){return (v===undefined||v===null||v===''||v==='undefined')?f:String(v)}
-  function normalizeSavedPatternResult(result){
-    result=result||{}; result.reasons=result.reasons||{};
-    result.pattern=safeNum(result.pattern); result.replay=safeNum(result.replay); result.flow=safeNum(result.flow); result.dream=safeNum(result.dream);
-    result.confidence=Math.max(55,Math.min(98,Math.round(safeNum(result.confidence,70))));
-    result.mode=safeText(result.mode,'참고'); result.sampleCount=safeNum(result.sampleCount); result.keepCount=safeNum(result.keepCount); result.inputCount=safeNum(result.inputCount);
-    result.topNumbers=Array.isArray(result.topNumbers)?result.topNumbers:[]; result.replayTop=Array.isArray(result.replayTop)?result.replayTop:[]; result.chains=Array.isArray(result.chains)?result.chains:[];
-    result.reasons.pattern=safeText(result.reasons.pattern,'Pattern 산출근거 대기');
-    result.reasons.replay=safeText(result.reasons.replay,'Replay 산출근거 대기');
-    result.reasons.flow=safeText(result.reasons.flow,'Flow 산출근거 대기');
-    result.reasons.dream=safeText(result.reasons.dream,'Dream 산출근거 대기');
-    return result;
+  if(window.__patternPurityV07Bound)return;
+  window.__patternPurityV07Bound=true;
+
+  function uniq(nums){return [...new Set((nums||[]).map(Number).filter(n=>n>=1&&n<=45))].sort((a,b)=>a-b)}
+  function poolV07(row){const arr=[...(row.numbers||[])].map(Number).filter(n=>n>=1&&n<=45); if(includeBonus()&&row.bonus)arr.push(Number(row.bonus)); return arr}
+  function hasAll(row,nums){const p=poolV07(row); return nums.every(n=>p.includes(n))}
+  function hasAny(row,nums){const p=poolV07(row); return nums.some(n=>p.includes(n))}
+  function hitCountV07(row,nums){const p=poolV07(row); return nums.filter(n=>p.includes(n)).length}
+  function getRowByRound(round){return lottoData.find(r=>Number(r.round)===Number(round))||null}
+  function prevRow(row,gap){return getRowByRound(Number(row.round)-gap)}
+  function gapsSeries2(){return [2,4,6,8,10,12,14,16,18,20,22,24]}
+  function gapsSeries3(){return [3,6,9,12,15,18,21,24]}
+
+  function similarNumberPool(nums){
+    const out=new Set();
+    nums.forEach(n=>[n-1,n+1,n-10,n+10].forEach(x=>{if(x>=1&&x<=45&&!nums.includes(x))out.add(x)}));
+    return [...out].sort((a,b)=>a-b).slice(0,12);
   }
-  const prevRender=window.renderResult;
-  if(typeof prevRender==='function'){
+
+  function makeStageDatasets(nums){
+    nums=uniq(nums);
+    const allRows=[...lottoData].sort((a,b)=>b.round-a.round);
+    const stage1=allRows.filter(row=>hasAll(row,nums));
+
+    let pairs=[];
+    if(nums.length>=3){
+      for(let i=0;i<nums.length;i++){
+        for(let j=i+1;j<nums.length;j++){
+          const pair=[nums[i],nums[j]];
+          pairs.push({label:pair.join('·'),nums:pair,rows:allRows.filter(row=>hasAll(row,pair))});
+        }
+      }
+    }else{
+      pairs=[{label:nums.join('·'),nums,rows:stage1}];
+    }
+
+    const pairMap=new Map();
+    pairs.forEach(p=>p.rows.forEach(r=>pairMap.set(r.round,r)));
+    const stage2=[...pairMap.values()].sort((a,b)=>b.round-a.round);
+    const stage3=allRows.filter(row=>hasAny(row,nums));
+    const similarNums=similarNumberPool(nums);
+    const stage4=similarNums.length?allRows.filter(row=>hasAny(row,similarNums)):[];
+    return {stage1,stage2,stage3,stage4,pairs,similarNums};
+  }
+
+  function scanDataset(rows,nums,gaps){
+    const freq={}, replay={}, chains={};
+    let comparisons=0,reproduced=0;
+    rows.forEach(row=>{
+      gaps.forEach(g=>{
+        const prev=prevRow(row,g);
+        if(!prev)return;
+        comparisons++;
+        const pp=poolV07(prev);
+        const hit=nums.filter(n=>pp.includes(n));
+        if(hit.length)reproduced++;
+        pp.forEach(n=>freq[n]=(freq[n]||0)+1);
+        hit.forEach(n=>replay[n]=(replay[n]||0)+1);
+        const prev2=prevRow(row,g*2);
+        if(prev2){
+          poolV07(prev2).forEach(a=>poolV07(prev).forEach(b=>poolV07(row).forEach(c=>{
+            if(a===b&&b===c)return;
+            const key=`${a}-${b}-${c}`;
+            chains[key]=(chains[key]||0)+1;
+          })));
+        }
+      });
+    });
+    const top=Object.entries(freq).map(([n,c])=>({n:Number(n),count:c})).sort((a,b)=>b.count-a.count||a.n-b.n);
+    const replayTop=Object.entries(replay).map(([n,c])=>({n:Number(n),count:c})).sort((a,b)=>b.count-a.count||a.n-b.n);
+    const chainTop=Object.entries(chains).map(([k,c])=>({nums:k.split('-').map(Number),count:c})).sort((a,b)=>b.count-a.count||a.nums[0]-b.nums[0]).slice(0,10);
+    const rate=comparisons?Math.round(reproduced/comparisons*100):0;
+    return {comparisons,reproduced,rate,top,replayTop,chainTop};
+  }
+
+  function qualityScore(dataset,analysis){
+    const sampleScore=Math.min(40,dataset.length*1.2);
+    const replayScore=Math.min(35,analysis.rate*0.35);
+    const densityScore=Math.min(25,(analysis.top[0]?.count||0)*0.8);
+    return Math.round(Math.min(100,sampleScore+replayScore+densityScore));
+  }
+
+  function chooseStage(nums,sets){
+    const s1=scanDataset(sets.stage1,nums,gapsSeries2()), q1=qualityScore(sets.stage1,s1);
+    if(sets.stage1.length>=30&&q1>=65)return {stage:1,label:'Stage 1',reason:'공통회차와 Pattern Quality가 충분하여 1차 분석만 사용',rows:sets.stage1,scan:s1,quality:q1,purity:100};
+
+    const s2=scanDataset(sets.stage2,nums,gapsSeries2()), q2=qualityScore(sets.stage2,s2);
+    if((sets.stage1.length>=12&&q1>=55)||q2>=65)return {stage:2,label:'Stage 2',reason:'Stage 1 보강을 위해 2번호군 Dataset까지 참고',rows:sets.stage2,scan:s2,quality:q2,purity:85};
+
+    const s3=scanDataset(sets.stage3,nums,gapsSeries2()), q3=qualityScore(sets.stage3,s3);
+    if(q3>=55)return {stage:3,label:'Stage 3',reason:'표본 부족으로 단일번호 포함 Dataset까지 확장',rows:sets.stage3,scan:s3,quality:q3,purity:60};
+
+    const s4=scanDataset(sets.stage4,nums,gapsSeries2()), q4=qualityScore(sets.stage4,s4);
+    return {stage:4,label:'Stage 4',reason:'표본 부족으로 유사번호군 참고',rows:sets.stage4,scan:s4,quality:q4,purity:40};
+  }
+
+  function renderDatasetRows(rows,nums,limit){
+    if(!rows.length)return '<p class="muted">해당 회차가 없습니다.</p>';
+    return rows.slice(0,limit||20).map(row=>{
+      const hit=hitCountV07(row,nums);
+      return `<div class="dataset-row"><div class="dataset-head"><b>${row.round}회 · ${hit}개 포함</b><span>${row.date||''}</span></div><div class="balls">${(row.numbers||[]).map(n=>ball(n,true,nums.includes(n)?'selected-ball':'')).join('')}${ball(row.bonus,true,nums.includes(row.bonus)?'selected-ball':'')}</div></div>`;
+    }).join('');
+  }
+
+  function renderPrevRows(rows,gaps,nums,limitRows){
+    if(!rows.length)return '<p class="muted">직전 회차 확인 대상이 없습니다.</p>';
+    return rows.slice(0,limitRows||4).map(row=>{
+      const items=gaps.slice(0,8).map(g=>{
+        const pr=prevRow(row,g);
+        if(!pr)return `<div class="prev-item"><b>직전 ${g}</b><p class="muted">회차 없음</p></div>`;
+        return `<div class="prev-item"><b>직전 ${g} · ${pr.round}회</b><div class="balls">${(pr.numbers||[]).map(n=>ball(n,true,nums.includes(n)?'selected-ball':'')).join('')}${ball(pr.bonus,true,nums.includes(pr.bonus)?'selected-ball':'')}</div></div>`;
+      }).join('');
+      return `<div class="dataset-card"><b>${row.round}회 기준 직전 간격 확인</b><div class="prev-grid">${items}</div></div>`;
+    }).join('');
+  }
+
+  function renderPurityPanel(nums){
+    const sets=makeStageDatasets(nums);
+    const s1=scanDataset(sets.stage1,nums,gapsSeries2());
+    const s2=scanDataset(sets.stage2,nums,gapsSeries2());
+    const s3=scanDataset(sets.stage3,nums,gapsSeries2());
+    const s4=scanDataset(sets.stage4,nums,gapsSeries2());
+    const chosen=chooseStage(nums,sets);
+
+    const stageRows=[
+      {name:'Stage 1',desc:`${nums.join('·')} 모두 포함`,purity:100,rows:sets.stage1,scan:s1},
+      {name:'Stage 2',desc:'2번호군 조합 포함',purity:85,rows:sets.stage2,scan:s2},
+      {name:'Stage 3',desc:'번호 중 1개 이상 포함',purity:60,rows:sets.stage3,scan:s3},
+      {name:'Stage 4',desc:'유사번호군 참고',purity:40,rows:sets.stage4,scan:s4}
+    ];
+
+    const topNums=chosen.scan.top.slice(0,6).map(x=>x.n).sort((a,b)=>a-b);
+    const flowText=chosen.scan.chainTop.length?`${chosen.scan.chainTop[0].nums.join('→')} · ${chosen.scan.chainTop[0].count}회`:'흐름 후보 부족';
+    const result={
+      key:nums.join(','),
+      pattern:Math.min(100,Math.round(chosen.quality)),
+      replay:chosen.scan.rate,
+      flow:Math.min(100,Math.round((chosen.scan.chainTop[0]?.count||0)*8+chosen.scan.chainTop.length*3)),
+      dream:Math.min(100,Math.round(chosen.quality*0.45+chosen.scan.rate*0.35+Math.min(20,chosen.scan.chainTop.length*2))),
+      confidence:Math.min(98,Math.max(55,Math.round(chosen.quality*0.55+chosen.scan.rate*0.35))),
+      mode:`${chosen.label} · 순도 ${chosen.purity}%`,
+      sampleCount:chosen.rows.length,
+      comparisons:chosen.scan.comparisons,
+      keepCount:topNums.filter(n=>nums.includes(n)).length,
+      inputCount:nums.length,
+      topNumbers:topNums,
+      replayTop:chosen.scan.replayTop,
+      chains:chosen.scan.chainTop,
+      reasons:{
+        pattern:`${chosen.label} 선택 · ${chosen.reason}`,
+        replay:`${chosen.scan.reproduced}/${chosen.scan.comparisons} 재현 · 재현율 ${chosen.scan.rate}%`,
+        flow:flowText,
+        dream:`순도 ${chosen.purity}% Dataset 기반 후보 ${topNums.join(', ')}`
+      }
+    };
+    try{localStorage.setItem('pattern_engine_result',JSON.stringify(result));}catch(e){}
+
+    return `<div class="title">Pattern Purity Engine v0.7</div>
+    <div class="purity-stage-card"><b>순도 기반 Pattern 판단</b><p class="guide">입력 번호군의 공통회차를 우선 사용하고, Pattern Quality가 부족할 때만 Dataset을 단계적으로 확장합니다.</p><div class="purity-grid"><div><b>${chosen.label}</b><span>선택 단계</span></div><div><b>${chosen.purity}%</b><span>Dataset 순도</span></div><div><b>${chosen.rows.length}회</b><span>선택 Dataset</span></div><div><b>${chosen.quality}점</b><span>Pattern Quality</span></div></div><p class="guide"><span class="stage-badge">${chosen.label}</span>${chosen.reason}</p></div>
+    <div class="card"><b>Stage별 Dataset 비교</b><p class="guide">Stage 1이 가장 순도가 높고, Stage가 올라갈수록 표본은 늘지만 순도는 낮아집니다.</p>${stageRows.map(s=>`<div class="dataset-row"><div class="dataset-head"><b>${s.name} · 순도 ${s.purity}%</b><span>${s.rows.length}회 · 비교 ${s.scan.comparisons} · 재현율 ${s.scan.rate}%</span></div><p class="muted">${s.desc}</p></div>`).join('')}</div>
+    <div class="card"><b>선택 Dataset 회차 확인</b><p class="guide">${chosen.label}에서 실제 계산에 사용한 회차입니다. 표본이 적을수록 이 회차들을 직접 확인하는 것이 중요합니다.</p>${renderDatasetRows(chosen.rows,nums,20)}</div>
+    <div class="card"><b>직전 2계열 회차 확인</b><p class="guide">선택 Dataset 일부 회차 기준으로 직전 2·4·6·8·10·12·14·16 간격을 직접 확인합니다.</p>${renderPrevRows(chosen.rows,gapsSeries2(),nums,4)}</div>
+    <div class="card"><b>직전 3계열 회차 확인</b><p class="guide">선택 Dataset 일부 회차 기준으로 직전 3·6·9·12·15·18·21·24 간격을 직접 확인합니다.</p>${renderPrevRows(chosen.rows,gapsSeries3(),nums,4)}</div>`;
+  }
+
+  const originalRenderResult=window.renderResult;
+  if(typeof originalRenderResult==='function'){
     window.renderResult=renderResult=function(nums){
-      prevRender(nums);
-      try{const raw=JSON.parse(localStorage.getItem('pattern_engine_result')||'null');if(raw)localStorage.setItem('pattern_engine_result',JSON.stringify(normalizeSavedPatternResult(raw)))}catch(e){}
+      originalRenderResult(nums);
+      try{
+        const html=renderPurityPanel(nums);
+        const box=document.getElementById('patternResult');
+        if(box)box.insertAdjacentHTML('beforeend',html);
+      }catch(e){console.warn('Pattern Purity Engine v0.7 표시 오류',e);}
     };
   }
 })();
