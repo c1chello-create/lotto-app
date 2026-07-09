@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>동반패턴 분석 v0.6.1 🍀</title>
+<title>동반패턴 분석 v0.6.8 🍀</title>
 <link rel="stylesheet" href="style.css">
 <style>
 body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#101828}
@@ -59,7 +59,7 @@ body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"S
 <div class="wrap">
 <header class="top">
 <div class="status"><span>9:41</span><span>▮▮▮ Wi‑Fi 100</span></div>
-<div class="titlebar"><a href="index.html">‹</a><div>동반패턴 분석 v0.6.1</div><span>🍀</span></div>
+<div class="titlebar"><a href="index.html">‹</a><div>동반패턴 분석 v0.6.8</div><span>🍀</span></div>
 <nav class="tabs"><a class="active" href="pattern.html">패턴 분석</a><a href="index.html">상세 분석</a><a href="combo.html">조합 분석</a><a href="#">그래프 분석</a></nav>
 </header>
 <div class="card">
@@ -491,6 +491,36 @@ loadData();
       console.warn('pattern_engine_result 저장 실패',e);
     }
   };
+})();
+</script>
+
+
+<script>
+/* v0.6.8 Stable 저장 객체 정규화 */
+(function(){
+  if(window.__patternEngineResultV168Bound)return;
+  window.__patternEngineResultV168Bound=true;
+  function safeNum(v,d=0){v=Number(v);return Number.isFinite(v)?v:d}
+  function safeText(v,f='-'){return (v===undefined||v===null||v===''||v==='undefined')?f:String(v)}
+  function normalizeSavedPatternResult(result){
+    result=result||{}; result.reasons=result.reasons||{};
+    result.pattern=safeNum(result.pattern); result.replay=safeNum(result.replay); result.flow=safeNum(result.flow); result.dream=safeNum(result.dream);
+    result.confidence=Math.max(55,Math.min(98,Math.round(safeNum(result.confidence,70))));
+    result.mode=safeText(result.mode,'참고'); result.sampleCount=safeNum(result.sampleCount); result.keepCount=safeNum(result.keepCount); result.inputCount=safeNum(result.inputCount);
+    result.topNumbers=Array.isArray(result.topNumbers)?result.topNumbers:[]; result.replayTop=Array.isArray(result.replayTop)?result.replayTop:[]; result.chains=Array.isArray(result.chains)?result.chains:[];
+    result.reasons.pattern=safeText(result.reasons.pattern,'Pattern 산출근거 대기');
+    result.reasons.replay=safeText(result.reasons.replay,'Replay 산출근거 대기');
+    result.reasons.flow=safeText(result.reasons.flow,'Flow 산출근거 대기');
+    result.reasons.dream=safeText(result.reasons.dream,'Dream 산출근거 대기');
+    return result;
+  }
+  const prevRender=window.renderResult;
+  if(typeof prevRender==='function'){
+    window.renderResult=renderResult=function(nums){
+      prevRender(nums);
+      try{const raw=JSON.parse(localStorage.getItem('pattern_engine_result')||'null');if(raw)localStorage.setItem('pattern_engine_result',JSON.stringify(normalizeSavedPatternResult(raw)))}catch(e){}
+    };
+  }
 })();
 </script>
 
