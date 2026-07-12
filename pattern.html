@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>동반패턴 분석 v0.7 🍀</title>
+<title>동반패턴 분석 v0.8 실험 🍀</title>
 <link rel="stylesheet" href="style.css">
 <style>
 body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#101828}
@@ -73,13 +73,25 @@ body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"S
 .prev-item b{display:block;color:#8a5b00;font-size:12px;margin-bottom:5px}
 @media(max-width:430px){.purity-grid{grid-template-columns:1fr}.prev-grid{grid-template-columns:1fr}}
 
+
+.auto-v08{background:#fff;border:1px solid #d8e5f6;border-radius:18px;padding:14px;margin:12px}
+.auto-v08 h3{margin:0 0 8px;color:#11366b}
+.auto-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.auto-grid div{background:#f8fafc;border:1px solid #eef2f7;border-radius:12px;padding:10px;text-align:center}
+.auto-grid b{display:block;color:#11366b;font-size:17px}
+.auto-grid span{font-size:12px;color:#667085}
+.auto-series{border-top:1px solid #eef2f7;padding:12px 0}
+.auto-candidate{display:grid;grid-template-columns:40px 1fr;gap:8px;align-items:center;padding:7px 0;border-top:1px solid #f2f4f7}
+.auto-tags{font-size:11px;color:#475467;margin-top:4px}
+@media(max-width:430px){.auto-grid{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body>
 <div class="wrap">
 <header class="top">
 <div class="status"><span>9:41</span><span>▮▮▮ Wi‑Fi 100</span></div>
-<div class="titlebar"><a href="index.html">‹</a><div>동반패턴 분석 v0.7</div><span>🍀</span></div>
+<div class="titlebar"><a href="index.html">‹</a><div>동반패턴 분석 v0.8 실험</div><span>🍀</span></div>
 <nav class="tabs"><a class="active" href="pattern.html">패턴 분석</a><a href="index.html">상세 분석</a><a href="combo.html">조합 분석</a><a href="#">그래프 분석</a></nav>
 </header>
 <div class="card">
@@ -694,6 +706,58 @@ loadData();
       }catch(e){console.warn('Pattern Purity Engine v0.7 표시 오류',e);}
     };
   }
+})();
+</script>
+
+
+<script>
+(function(){
+ if(window.__autoV08)return; window.__autoV08=true;
+ const U=a=>[...new Set((a||[]).map(Number).filter(n=>n>=1&&n<=45))].sort((a,b)=>a-b);
+ const P=r=>{const a=[...(r.numbers||[])].map(Number);if(includeBonus()&&r.bonus)a.push(Number(r.bonus));return a};
+ const all=(r,ns)=>{const p=P(r);return ns.every(n=>p.includes(n))};
+ const any=(r,ns)=>{const p=P(r);return ns.some(n=>p.includes(n))};
+ function purity(ns){
+   const rows=[...lottoData].sort((a,b)=>b.round-a.round);
+   const s1=rows.filter(r=>all(r,ns));
+   const m=new Map();
+   if(ns.length>=3){for(let i=0;i<ns.length;i++)for(let j=i+1;j<ns.length;j++)rows.filter(r=>all(r,[ns[i],ns[j]])).forEach(r=>m.set(r.round,r))}
+   else s1.forEach(r=>m.set(r.round,r));
+   const s2=[...m.values()].sort((a,b)=>b.round-a.round);
+   const s3=rows.filter(r=>any(r,ns));
+   if(s1.length>=9)return{rows:s1,stage:1,purity:100};
+   if(s2.length>=9)return{rows:s2,stage:2,purity:85};
+   return{rows:s3,stage:3,purity:60};
+ }
+ function analyze(rows,step,limit){
+   const s=(limit==='all'?rows:rows.slice(0,Number(limit))).map(row=>({row}));
+   const gaps=[];for(let g=step;g<=Math.floor(s.length/2);g+=step)gaps.push(g);
+   const f={};for(let n=1;n<=45;n++)f[n]=0;
+   let checks=0,hits=0;
+   for(let i=0;i<s.length;i++)gaps.forEach(g=>{const t=s[i+g];if(!t)return;checks++;P(t.row).forEach(n=>f[n]=(f[n]||0)+1)});
+   const rank=Object.entries(f).map(([n,c])=>({n:+n,count:c})).filter(x=>x.count>0).sort((a,b)=>b.count-a.count||a.n-b.n);
+   const picks=rank.slice(0,6).map(x=>x.n), rep={};
+   for(let i=0;i<s.length;i++)gaps.forEach(g=>{const t=s[i+g];if(!t)return;const q=P(t.row), local=picks.filter(n=>q.includes(n));if(local.length)hits++;local.forEach(n=>rep[n]=(rep[n]||0)+1)});
+   const rate=checks?Math.round(hits/checks*100):0;
+   const quality=Math.min(100,Math.round(Math.min(40,s.length*1.1)+Math.min(40,rate*.4)+Math.min(20,(rank[0]?.count||0)*.7)));
+   const candidates=rank.slice(0,6).map((x,i)=>({n:x.n,count:x.count,replay:(rep[x.n]||0)>0,flow:i<4,dream:(rep[x.n]||0)>0&&i<4}));
+   return{step,limit,sample:s.length,checks,rate,quality,candidates};
+ }
+ function render(ns){
+   const pu=purity(ns), ranges=[20,30,50,'all'], runs=[];
+   ranges.forEach(r=>[2,3,4].forEach(st=>runs.push({...analyze(pu.rows,st,r),stage:pu.stage,purity:pu.purity})));
+   runs.sort((a,b)=>b.quality-a.quality||b.rate-a.rate||b.checks-a.checks);
+   const best=runs[0], whole=[2,3,4].map(st=>analyze(pu.rows,st,'all'));
+   const cand=c=>`<div class="auto-candidate">${ball(c.n,true)}<div><b>${c.count}회</b><div class="auto-tags">Replay ${c.replay?'✔':'✖'} · Flow ${c.flow?'✔':'✖'} · Dream ${c.dream?'✔':'✖'}</div></div></div>`;
+   return `<div class="title">AI 자동탐색 시험 v0.8</div>
+   <div class="auto-v08"><h3>통합 AI 자동탐색</h3><p class="guide">20·30·50·전체와 2·3·4계열을 비교한 시험 결과입니다.</p>
+   <div class="auto-grid"><div><b>${best.limit==='all'?'전체':best.limit+'개'}</b><span>선택 범위</span></div><div><b>${best.step}계열</b><span>선택 계열</span></div><div><b>Stage ${best.stage}</b><span>순도 ${best.purity}%</span></div><div><b>${best.quality}점</b><span>Pattern Quality</span></div><div><b>${best.rate}%</b><span>Replay</span></div><div><b>${best.checks}회</b><span>유효 비교</span></div></div>
+   <p class="guide">최종 후보</p><div class="balls">${best.candidates.map(c=>ball(c.n,false,'selected-ball')).join('')}</div>
+   <p class="muted">Classic AI Score에는 반영하지 않습니다.</p></div>
+   <div class="auto-v08"><h3>계열별 전체 탐색 결과</h3>${whole.map(s=>`<div class="auto-series"><div class="head"><b>${s.step}계열 전체</b><span class="badge">Quality ${s.quality} · Replay ${s.rate}%</span></div><p class="muted">Dataset ${s.sample}회 · 비교 ${s.checks}회</p>${s.candidates.map(cand).join('')}</div>`).join('')}</div>`;
+ }
+ const prev=window.renderResult;
+ window.renderResult=renderResult=function(nums){prev(nums);if(analysisMode==='auto'){const box=document.getElementById('patternResult');if(box)box.insertAdjacentHTML('beforeend',render(U(nums)))}};
 })();
 </script>
 
