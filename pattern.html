@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>동반패턴 분석 v0.8 실험 🍀</title>
+<title>동반패턴 분석 v0.8.1 실험 🍀</title>
 <link rel="stylesheet" href="style.css">
 <style>
 body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#101828}
@@ -85,13 +85,26 @@ body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"S
 .auto-tags{font-size:11px;color:#475467;margin-top:4px}
 @media(max-width:430px){.auto-grid{grid-template-columns:1fr}}
 
+
+/* v0.8.1 계열별 번호군 */
+.series-group-card{background:#fffdf6;border:1px solid #ead48e;border-radius:18px;padding:14px;margin:12px}
+.series-group-card h3{margin:0 0 8px;color:#8a5b00}
+.series-group-row{border-top:1px solid #f0e6c8;padding:12px 0}
+.series-group-row:first-of-type{border-top:0}
+.series-group-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+.series-group-head b{color:#11366b}
+.series-group-head span{font-size:12px;color:#667085}
+.series-group-balls{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.final-series-box{background:#eef6ff;border:1px solid #cfe0f5;border-radius:15px;padding:12px;margin-top:12px}
+.final-series-box b{color:#11366b}
+
 </style>
 </head>
 <body>
 <div class="wrap">
 <header class="top">
 <div class="status"><span>9:41</span><span>▮▮▮ Wi‑Fi 100</span></div>
-<div class="titlebar"><a href="index.html">‹</a><div>동반패턴 분석 v0.8 실험</div><span>🍀</span></div>
+<div class="titlebar"><a href="index.html">‹</a><div>동반패턴 분석 v0.8.1 실험</div><span>🍀</span></div>
 <nav class="tabs"><a class="active" href="pattern.html">패턴 분석</a><a href="index.html">상세 분석</a><a href="combo.html">조합 분석</a><a href="#">그래프 분석</a></nav>
 </header>
 <div class="card">
@@ -748,12 +761,43 @@ loadData();
    ranges.forEach(r=>[2,3,4].forEach(st=>runs.push({...analyze(pu.rows,st,r),stage:pu.stage,purity:pu.purity})));
    runs.sort((a,b)=>b.quality-a.quality||b.rate-a.rate||b.checks-a.checks);
    const best=runs[0], whole=[2,3,4].map(st=>analyze(pu.rows,st,'all'));
-   const cand=c=>`<div class="auto-candidate">${ball(c.n,true)}<div><b>${c.count}회</b><div class="auto-tags">Replay ${c.replay?'✔':'✖'} · Flow ${c.flow?'✔':'✖'} · Dream ${c.dream?'✔':'✖'}</div></div></div>`;
+  
+ function renderSeriesGroups08(whole,best){
+   const rows=whole.slice(0,3).map(s=>{
+     const nums=s.candidates.slice(0,6).map(c=>c.n).sort((a,b)=>a-b);
+     return `<div class="series-group-row">
+       <div class="series-group-head">
+         <b>${s.step}계열 번호군</b>
+         <span>비교 ${s.checks}회 · Quality ${s.quality}</span>
+       </div>
+       <div class="series-group-balls">
+         ${nums.map(n=>ball(n,false,'selected-ball')).join('')}
+       </div>
+     </div>`;
+   }).join('');
+
+   const finalNums=best.candidates.slice(0,6).map(c=>c.n).sort((a,b)=>a-b);
+   return `<div class="series-group-card">
+     <h3>AI 자동탐색 계열별 번호군</h3>
+     <p class="guide">2·3·4계열에서 각각 추려낸 대표 번호 6개를 비교합니다.</p>
+     ${rows}
+     <div class="final-series-box">
+       <b>AI 최종선택 · ${best.step}계열</b>
+       <p class="muted">선택 범위 ${best.limit==='all'?'전체':best.limit+'개'} · 비교 ${best.checks}회 · Quality ${best.quality}</p>
+       <div class="series-group-balls">
+         ${finalNums.map(n=>ball(n,false,'selected-ball')).join('')}
+       </div>
+     </div>
+   </div>`;
+ }
+
+ const cand=c=>`<div class="auto-candidate">${ball(c.n,true)}<div><b>${c.count}회</b><div class="auto-tags">Replay ${c.replay?'✔':'✖'} · Flow ${c.flow?'✔':'✖'} · Dream ${c.dream?'✔':'✖'}</div></div></div>`;
    return `<div class="title">AI 자동탐색 시험 v0.8</div>
    <div class="auto-v08"><h3>통합 AI 자동탐색</h3><p class="guide">20·30·50·전체와 2·3·4계열을 비교한 시험 결과입니다.</p>
    <div class="auto-grid"><div><b>${best.limit==='all'?'전체':best.limit+'개'}</b><span>선택 범위</span></div><div><b>${best.step}계열</b><span>선택 계열</span></div><div><b>Stage ${best.stage}</b><span>순도 ${best.purity}%</span></div><div><b>${best.quality}점</b><span>Pattern Quality</span></div><div><b>${best.rate}%</b><span>Replay</span></div><div><b>${best.checks}회</b><span>유효 비교</span></div></div>
    <p class="guide">최종 후보</p><div class="balls">${best.candidates.map(c=>ball(c.n,false,'selected-ball')).join('')}</div>
    <p class="muted">Classic AI Score에는 반영하지 않습니다.</p></div>
+   ${renderSeriesGroups08(whole,best)}
    <div class="auto-v08"><h3>계열별 전체 탐색 결과</h3>${whole.map(s=>`<div class="auto-series"><div class="head"><b>${s.step}계열 전체</b><span class="badge">Quality ${s.quality} · Replay ${s.rate}%</span></div><p class="muted">Dataset ${s.sample}회 · 비교 ${s.checks}회</p>${s.candidates.map(cand).join('')}</div>`).join('')}</div>`;
  }
  const prev=window.renderResult;
