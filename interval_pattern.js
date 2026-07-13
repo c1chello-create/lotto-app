@@ -1,6 +1,6 @@
 
 /* =========================================================
-   Interval Pattern Engine Phase 2 v1.0
+   Interval Pattern Engine v1.1
    독립 모듈
    - 직전 10 / 30 / 50회
    - 2계열: 2↔4, 4↔6, 6↔8 ...
@@ -10,8 +10,8 @@
    - Dream Chain / Classic AI Score 미연동
 ========================================================= */
 (function(){
-  if(window.__intervalPatternPhase2V1)return;
-  window.__intervalPatternPhase2V1=true;
+  if(window.__intervalPatternV11)return;
+  window.__intervalPatternV11=true;
 
   function ensureStyle(){
     if(document.getElementById('intervalPatternPhase2Style'))return;
@@ -59,9 +59,15 @@
   }
 
   function rowsDesc(){
-    return (Array.isArray(window.lottoData)?window.lottoData:[])
-      .slice()
-      .sort((a,b)=>Number(b.round)-Number(a.round));
+    try{
+      if(typeof lottoData!=='undefined' && Array.isArray(lottoData)){
+        return lottoData.slice().sort((a,b)=>Number(b.round)-Number(a.round));
+      }
+    }catch(e){}
+    const fallback=Array.isArray(window.LOTTO_DATA)
+      ? window.LOTTO_DATA
+      : (Array.isArray(window.lottoData)?window.lottoData:[]);
+    return fallback.slice().sort((a,b)=>Number(b.round)-Number(a.round));
   }
 
   function pool(row){
@@ -78,6 +84,17 @@
   }
 
   function pairKey(nums){return nums.slice().sort((a,b)=>a-b).join('-')}
+  function combinations(items,size){
+    const out=[];
+    function walk(start,pick){
+      if(pick.length===size){out.push(pick.slice());return}
+      for(let i=start;i<items.length;i++){
+        pick.push(items[i]);walk(i+1,pick);pick.pop();
+      }
+    }
+    walk(0,[]);
+    return out;
+  }
 
   function sampleWarning(count){
     if(count<=4)return {label:'매우 부족',cls:'strong'};
@@ -96,7 +113,8 @@
 
     const pairComparisons=[];
     const numberStats={};
-    const groupStats={};
+    const pairGroupStats={};
+    const tripleGroupStats={};
 
     checkpoints.forEach(cp=>{
       cp.numbers.forEach(n=>{
@@ -124,18 +142,24 @@
         });
       });
 
-      if(common.length>=2){
-        const k=pairKey(common);
-        if(!groupStats[k])groupStats[k]={nums:common,count:0,pairs:[]};
-        groupStats[k].count++;
-        groupStats[k].pairs.push(`${a.offset}↔${b.offset}`);
-      }
+      combinations(common,2).forEach(nums=>{
+        const k=pairKey(nums);
+        if(!pairGroupStats[k])pairGroupStats[k]={nums,count:0,pairs:[]};
+        pairGroupStats[k].count++;
+        pairGroupStats[k].pairs.push(`${a.offset}↔${b.offset}`);
+      });
+      combinations(common,3).forEach(nums=>{
+        const k=pairKey(nums);
+        if(!tripleGroupStats[k])tripleGroupStats[k]={nums,count:0,pairs:[]};
+        tripleGroupStats[k].count++;
+        tripleGroupStats[k].pairs.push(`${a.offset}↔${b.offset}`);
+      });
     }
 
     const numbers=Object.values(numberStats).map(x=>{
       let strength='관찰';
-      if(x.checkpointHits>=3 && x.pairHits>=2)strength='초강세';
-      else if(x.checkpointHits>=2 && x.pairHits>=1)strength='강세';
+      if(x.checkpointHits>=3)strength='초강세';
+      else if(x.checkpointHits>=2)strength='강세';
 
       const companionTop=Object.entries(x.companions)
         .map(([n,c])=>({n:Number(n),count:c}))
@@ -151,12 +175,15 @@
     }).filter(x=>x.checkpointHits>=2 || x.pairHits>=1)
       .sort((a,b)=>b.score-a.score||b.pairHits-a.pairHits||b.checkpointHits-a.checkpointHits||a.n-b.n);
 
-    const companions=Object.values(groupStats)
-      .sort((a,b)=>b.count-a.count||b.nums.length-a.nums.length)
-      .slice(0,10);
+    const pairGroups=Object.values(pairGroupStats)
+      .sort((a,b)=>b.count-a.count||a.nums[0]-b.nums[0])
+      .slice(0,12);
+    const tripleGroups=Object.values(tripleGroupStats)
+      .sort((a,b)=>b.count-a.count||a.nums[0]-b.nums[0])
+      .slice(0,12);
 
     return {
-      windowSize,step,checkpoints,pairComparisons,numbers,companions,
+      windowSize,step,checkpoints,pairComparisons,numbers,pairGroups,tripleGroups,
       comparisons:pairComparisons.length
     };
   }
@@ -171,7 +198,7 @@
       <div>
         <div class="interval-bar"><i style="width:${Math.max(7,Math.round(n.score/(maxScore||1)*100))}%"></i></div>
         <div class="interval-meta">
-          체크포인트 ${n.checkpointHits}회 · 연속쌍 ${n.pairHits}회<br>
+          체크포인트 출현 ${n.checkpointHits}회 · 공통구간 ${n.pairHits}회<br>
           직전 ${n.offsets.join('·')} · 동반 ${companions}
         </div>
       </div>
@@ -223,8 +250,12 @@
         ${result.numbers.length?result.numbers.slice(0,12).map(n=>renderNumber(n,max)).join(''):'<p class="muted">반복번호가 부족합니다.</p>'}
       </div>
       <div class="interval-companion">
-        <b>반복 동반번호군</b>
-        ${renderCompanions(result.companions)}
+        <b>2개 동반번호군 · 출현빈도</b>
+        ${renderCompanions(result.pairGroups)}
+      </div>
+      <div class="interval-companion">
+        <b>3개 동반번호군 · 출현빈도</b>
+        ${renderCompanions(result.tripleGroups)}
       </div>
       <details class="interval-rounds">
         <summary><b>공통번호 해당 회차 보기</b></summary>
@@ -254,12 +285,12 @@
 
   function renderRoot(){
     return `<div class="interval-root">
-      <div class="title">Interval Pattern Engine Phase 2</div>
+      <div class="title">Interval Pattern Engine v1.1</div>
       <div class="interval-card">
         <h3>시간축 반복패턴 독립 분석</h3>
         <p class="guide">
-          직전 10·30·50회 범위에서 2·3·4계열 체크포인트를 만들고,
-          인접 체크포인트의 공통번호를 누적하여 강세·초강세·동반번호를 찾습니다.
+          직전 10·30·50회 범위에서 2·3·4계열 실제 체크포인트를 만들고,
+          인접 체크포인트의 공통번호를 누적하여 강세·초강세와 동반번호군 출현빈도를 찾습니다.
         </p>
         <p class="muted">Dream Chain과 Classic AI Score에는 아직 연결하지 않습니다.</p>
       </div>
@@ -277,7 +308,7 @@
         const box=document.getElementById('patternResult');
         if(box)box.insertAdjacentHTML('beforeend',renderRoot());
       }catch(e){
-        console.error('Interval Pattern Engine Phase 2 오류',e);
+        console.error('Interval Pattern Engine v1.1 오류',e);
       }
     };
   }
