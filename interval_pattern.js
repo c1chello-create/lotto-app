@@ -1,6 +1,6 @@
 
 /* =========================================================
-   Interval Pattern Engine v1.1
+   Interval Pattern Engine v1.2 Continuity
    독립 모듈
    - 직전 10 / 30 / 50회
    - 2계열: 2↔4, 4↔6, 6↔8 ...
@@ -10,8 +10,8 @@
    - Dream Chain / Classic AI Score 미연동
 ========================================================= */
 (function(){
-  if(window.__intervalPatternV11)return;
-  window.__intervalPatternV11=true;
+  if(window.__intervalPatternV12)return;
+  window.__intervalPatternV12=true;
 
   function ensureStyle(){
     if(document.getElementById('intervalPatternPhase2Style'))return;
@@ -38,6 +38,7 @@
       .interval-strength.super{color:#b42318}
       .interval-strength.strong{color:#a15c00}
       .interval-strength.watch{color:#667085}
+      .interval-strength.distributed{color:#7a5b00}
       .interval-companion{background:#f7fff4;border:1px solid #d9ead3;border-radius:14px;padding:10px;margin-top:10px}
       .interval-companion-row{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid #e5eadf}
       .interval-companion-row:first-child{border-top:0}
@@ -103,6 +104,41 @@
     return {label:'정상',cls:'normal'};
   }
 
+  function continuityInfo(offsets,step){
+    const sorted=[...new Set((offsets||[]).map(Number))].sort((a,b)=>a-b);
+    if(!sorted.length)return {adjacentLinks:0,longestChain:0,score:0,segments:[],distributed:false};
+    let adjacentLinks=0,currentChain=1,longestChain=1;
+    const segments=[];
+    for(let i=1;i<sorted.length;i++){
+      if(sorted[i]-sorted[i-1]===step){
+        adjacentLinks++;currentChain++;segments.push(`${sorted[i-1]}↔${sorted[i]}`);
+        longestChain=Math.max(longestChain,currentChain);
+      }else currentChain=1;
+    }
+    let score=0;
+    if(adjacentLinks===1)score=40;
+    else if(adjacentLinks===2)score=70;
+    else if(adjacentLinks===3)score=85;
+    else if(adjacentLinks>=4)score=100;
+    return {adjacentLinks,longestChain,score,segments,distributed:sorted.length>=3&&adjacentLinks===0};
+  }
+  function classifyStrength(hitCount,c){
+    if(hitCount<=1)return '관찰';
+    if(hitCount>=3&&c.adjacentLinks>=2&&c.longestChain>=3)return '초강세';
+    if(hitCount>=2&&c.adjacentLinks>=1)return '강세';
+    if(hitCount>=3&&c.adjacentLinks===0)return '분산 강세';
+    return '관찰';
+  }
+  function groupContinuityInfo(pairs,step){
+    const starts=(pairs||[]).map(x=>Number(String(x).split('↔')[0])).filter(Number.isFinite).sort((a,b)=>a-b);
+    const info=continuityInfo(starts,step);
+    let strength='관찰 번호군';
+    if(starts.length>=3&&info.adjacentLinks>=2&&info.longestChain>=3)strength='초강세 번호군';
+    else if(starts.length>=2&&info.adjacentLinks>=1)strength='강세 번호군';
+    else if(starts.length>=3&&info.adjacentLinks===0)strength='분산 번호군';
+    return {...info,strength};
+  }
+
   function analyzeSeries(windowSize,step){
     const rows=rowsDesc().slice(0,windowSize);
     const checkpoints=[];
@@ -157,29 +193,28 @@
     }
 
     const numbers=Object.values(numberStats).map(x=>{
-      let strength='관찰';
-      if(x.checkpointHits>=3)strength='초강세';
-      else if(x.checkpointHits>=2)strength='강세';
-
+      const continuity=continuityInfo(x.offsets,step);
+      const strength=classifyStrength(x.checkpointHits,continuity);
       const companionTop=Object.entries(x.companions)
         .map(([n,c])=>({n:Number(n),count:c}))
         .sort((a,b)=>b.count-a.count||a.n-b.n)
         .slice(0,5);
-
-      const score=Math.min(100,Math.round(
-        Math.min(55,x.checkpointHits*15) +
-        Math.min(35,x.pairHits*18) +
-        Math.min(10,(companionTop[0]?.count||0)*5)
-      ));
-      return {...x,strength,companionTop,score};
-    }).filter(x=>x.checkpointHits>=2 || x.pairHits>=1)
+      const occurrenceScore=Math.min(30,Math.round((x.checkpointHits/Math.max(1,checkpoints.length))*30));
+      const continuityScore=Math.round(continuity.score*0.40);
+      const companionScore=Math.min(15,(companionTop[0]?.count||0)*5);
+      const patternQuality=Math.min(15,Math.round((x.pairHits/Math.max(1,pairComparisons.length))*15));
+      const score=Math.min(100,occurrenceScore+continuityScore+companionScore+patternQuality);
+      return {...x,strength,continuity,companionTop,occurrenceScore,continuityScore,companionScore,patternQuality,score};
+    }).filter(x=>x.checkpointHits>=1 || x.pairHits>=1)
       .sort((a,b)=>b.score-a.score||b.pairHits-a.pairHits||b.checkpointHits-a.checkpointHits||a.n-b.n);
 
     const pairGroups=Object.values(pairGroupStats)
-      .sort((a,b)=>b.count-a.count||a.nums[0]-b.nums[0])
+      .map(g=>({...g,continuity:groupContinuityInfo(g.pairs,step)}))
+      .sort((a,b)=>b.continuity.score-a.continuity.score||b.count-a.count||a.nums[0]-b.nums[0])
       .slice(0,12);
     const tripleGroups=Object.values(tripleGroupStats)
-      .sort((a,b)=>b.count-a.count||a.nums[0]-b.nums[0])
+      .map(g=>({...g,continuity:groupContinuityInfo(g.pairs,step)}))
+      .sort((a,b)=>b.continuity.score-a.continuity.score||b.count-a.count||a.nums[0]-b.nums[0])
       .slice(0,12);
 
     return {
@@ -189,17 +224,16 @@
   }
 
   function renderNumber(n,maxScore){
-    const cls=n.strength==='초강세'?'super':n.strength==='강세'?'strong':'watch';
-    const companions=n.companionTop.length
-      ? n.companionTop.map(x=>`${x.n}번 ${x.count}회`).join(' · ')
-      : '동반번호 없음';
+    const cls=n.strength==='초강세'?'super':n.strength==='강세'?'strong':n.strength==='분산 강세'?'distributed':'watch';
+    const companions=n.companionTop.length?n.companionTop.map(x=>`${x.n}번 ${x.count}회`).join(' · '):'동반번호 없음';
     return `<div class="interval-number-row">
       ${typeof ball==='function'?ball(n.n,true):`<b>${n.n}</b>`}
       <div>
         <div class="interval-bar"><i style="width:${Math.max(7,Math.round(n.score/(maxScore||1)*100))}%"></i></div>
         <div class="interval-meta">
-          체크포인트 출현 ${n.checkpointHits}회 · 공통구간 ${n.pairHits}회<br>
-          직전 ${n.offsets.join('·')} · 동반 ${companions}
+          체크포인트 ${n.checkpointHits}회 · 공통구간 ${n.pairHits}회 · Continuity ${n.continuity.score}점<br>
+          최장 연속 ${n.continuity.longestChain}개 · 연속구간 ${n.continuity.adjacentLinks}회 · 동반 ${companions}<br>
+          점수: 출현 ${n.occurrenceScore} + 연속 ${n.continuityScore} + 동반 ${n.companionScore} + Quality ${n.patternQuality}
         </div>
       </div>
       <div class="interval-strength ${cls}">${n.strength}<br>${n.score}</div>
@@ -208,11 +242,16 @@
 
   function renderCompanions(groups){
     if(!groups.length)return `<p class="muted">반복 동반번호군이 없습니다.</p>`;
-    return groups.slice(0,6).map(g=>`
-      <div class="interval-companion-row">
-        <div class="balls">${g.nums.map(n=>typeof ball==='function'?ball(n,true):`<b>${n}</b>`).join('')}</div>
+    return groups.slice(0,6).map(g=>{
+      const c=g.continuity||{score:0,adjacentLinks:0,longestChain:0,strength:'관찰 번호군'};
+      return `<div class="interval-companion-row">
+        <div>
+          <div class="balls">${g.nums.map(n=>typeof ball==='function'?ball(n,true):`<b>${n}</b>`).join('')}</div>
+          <div class="interval-meta">${c.strength} · Continuity ${c.score}점<br>연속구간 ${c.adjacentLinks}회 · 최장 연속 ${c.longestChain}개</div>
+        </div>
         <div class="count">${g.count}회<br><span class="muted">${g.pairs.join(', ')}</span></div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   }
 
   function renderPairRounds(pairs){
@@ -285,12 +324,12 @@
 
   function renderRoot(){
     return `<div class="interval-root">
-      <div class="title">Interval Pattern Engine v1.1</div>
+      <div class="title">Interval Pattern Engine v1.2 Continuity</div>
       <div class="interval-card">
         <h3>시간축 반복패턴 독립 분석</h3>
         <p class="guide">
           직전 10·30·50회 범위에서 2·3·4계열 실제 체크포인트를 만들고,
-          인접 체크포인트의 공통번호를 누적하여 강세·초강세와 동반번호군 출현빈도를 찾습니다.
+          인접 체크포인트의 공통번호를 누적하여 강세·초강세·분산 강세와 동반번호군의 연속성을 판정합니다.
         </p>
         <p class="muted">Dream Chain과 Classic AI Score에는 아직 연결하지 않습니다.</p>
       </div>
@@ -308,7 +347,7 @@
         const box=document.getElementById('patternResult');
         if(box)box.insertAdjacentHTML('beforeend',renderRoot());
       }catch(e){
-        console.error('Interval Pattern Engine v1.1 오류',e);
+        console.error('Interval Pattern Engine v1.2 Continuity 오류',e);
       }
     };
   }
