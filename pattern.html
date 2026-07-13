@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>동반패턴 분석 v0.8.1 실험 🍀</title>
+<title>동반패턴 분석 v1.0 Phase 2 🍀</title>
 <link rel="stylesheet" href="style.css">
 <style>
 body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#101828}
@@ -98,13 +98,40 @@ body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"S
 .final-series-box{background:#eef6ff;border:1px solid #cfe0f5;border-radius:15px;padding:12px;margin-top:12px}
 .final-series-box b{color:#11366b}
 
+
+/* v0.9 Phase 1: AI 자동탐색 근거·번호별 신뢰도 */
+.confidence-card{background:#fff;border:1px solid #d9e4f2;border-radius:18px;padding:14px;margin:12px}
+.confidence-card h3{margin:0 0 8px;color:#11366b}
+.confidence-note{background:#fffaf0;border:1px solid #f2d99b;border-radius:13px;padding:10px;margin:10px 0;font-size:12px;color:#667085;line-height:1.55}
+.confidence-list{margin-top:8px}
+.confidence-row{display:grid;grid-template-columns:42px 1fr 50px;gap:8px;align-items:center;padding:8px 0;border-top:1px solid #eef2f7}
+.confidence-row:first-child{border-top:0}
+.confidence-bar{height:9px;background:#eaf0f7;border-radius:999px;overflow:hidden}
+.confidence-bar i{display:block;height:100%;background:#2d8cff;border-radius:999px}
+.confidence-score{text-align:right;font-size:13px;font-weight:900;color:#11366b}
+.confidence-meta{font-size:11px;color:#667085;margin-top:4px}
+.matrix-wrap{overflow-x:auto;margin-top:10px}
+.confidence-matrix{width:100%;min-width:410px;border-collapse:collapse;font-size:12px}
+.confidence-matrix th,.confidence-matrix td{border-bottom:1px solid #eef2f7;padding:8px 6px;text-align:center}
+.confidence-matrix th{background:#f8fafc;color:#475467;font-weight:900}
+.confidence-matrix td:first-child{text-align:left;font-weight:900;color:#11366b}
+.final-reason{background:#eef6ff;border:1px solid #cfe0f5;border-radius:15px;padding:12px;margin-top:12px}
+.reason-line{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid #dfeaf7;font-size:13px}
+.reason-line:first-child{border-top:0}
+.reason-line b{color:#11366b}
+.sample-warning{border-radius:12px;padding:9px 10px;margin-top:8px;font-size:12px;font-weight:800}
+.sample-warning.strong{background:#fff1f0;border:1px solid #f7b9b4;color:#b42318}
+.sample-warning.warn{background:#fff7e6;border:1px solid #f5d08a;color:#a15c00}
+.sample-warning.caution{background:#fffbe6;border:1px solid #eadf91;color:#7a6500}
+.sample-warning.normal{background:#eef9f0;border:1px solid #b9dfc0;color:#24733a}
+
 </style>
 </head>
 <body>
 <div class="wrap">
 <header class="top">
 <div class="status"><span>9:41</span><span>▮▮▮ Wi‑Fi 100</span></div>
-<div class="titlebar"><a href="index.html">‹</a><div>동반패턴 분석 v0.8.1 실험</div><span>🍀</span></div>
+<div class="titlebar"><a href="index.html">‹</a><div>동반패턴 분석 v1.0 Phase 2</div><span>🍀</span></div>
 <nav class="tabs"><a class="active" href="pattern.html">패턴 분석</a><a href="index.html">상세 분석</a><a href="combo.html">조합 분석</a><a href="#">그래프 분석</a></nav>
 </header>
 <div class="card">
@@ -753,7 +780,21 @@ loadData();
    for(let i=0;i<s.length;i++)gaps.forEach(g=>{const t=s[i+g];if(!t)return;const q=P(t.row), local=picks.filter(n=>q.includes(n));if(local.length)hits++;local.forEach(n=>rep[n]=(rep[n]||0)+1)});
    const rate=checks?Math.round(hits/checks*100):0;
    const quality=Math.min(100,Math.round(Math.min(40,s.length*1.1)+Math.min(40,rate*.4)+Math.min(20,(rank[0]?.count||0)*.7)));
-   const candidates=rank.slice(0,6).map((x,i)=>({n:x.n,count:x.count,replay:(rep[x.n]||0)>0,flow:i<4,dream:(rep[x.n]||0)>0&&i<4}));
+   const maxCount=rank[0]?.count||1;
+   const candidates=rank.slice(0,6).map((x,i)=>{
+     const replay=(rep[x.n]||0)>0;
+     const flow=i<4;
+     const dream=replay&&flow;
+     const frequencyStrength=Math.round(x.count/maxCount*100);
+     const confidence=Math.max(1,Math.min(100,Math.round(
+       frequencyStrength*0.55 +
+       (replay?100:0)*0.20 +
+       (flow?100:0)*0.10 +
+       (dream?100:0)*0.05 +
+       quality*0.10
+     )));
+     return {n:x.n,count:x.count,replay,flow,dream,frequencyStrength,confidence,rank:i+1};
+   });
    return{step,limit,sample:s.length,checks,rate,quality,candidates};
  }
  function render(ns){
@@ -762,6 +803,88 @@ loadData();
    runs.sort((a,b)=>b.quality-a.quality||b.rate-a.rate||b.checks-a.checks);
    const best=runs[0], whole=[2,3,4].map(st=>analyze(pu.rows,st,'all'));
   
+
+ function sampleWarning08(count){
+   if(count<=4)return {cls:'strong',label:'매우 부족',text:`표본 ${count}개 · 강한 경고: 직접 회차 확인과 Stage 확장이 필요합니다.`};
+   if(count<=8)return {cls:'warn',label:'부족',text:`표본 ${count}개 · 경고: 결과는 참고용으로 해석하세요.`};
+   if(count<=15)return {cls:'caution',label:'주의',text:`표본 ${count}개 · 주의: 특정 번호 쏠림 가능성이 있습니다.`};
+   return {cls:'normal',label:'정상',text:`표본 ${count}개 · 기본 분석이 가능한 범위입니다.`};
+ }
+
+ function renderConfidenceList08(series){
+   return `<div class="confidence-list">${series.candidates.map(c=>`
+     <div class="confidence-row">
+       ${ball(c.n,true)}
+       <div>
+         <div class="confidence-bar"><i style="width:${Math.max(5,c.confidence)}%"></i></div>
+         <div class="confidence-meta">${c.count}회 · 빈도강도 ${c.frequencyStrength}% · Replay ${c.replay?'✔':'✖'} · Flow ${c.flow?'✔':'✖'} · Dream ${c.dream?'✔':'✖'}</div>
+       </div>
+       <div class="confidence-score">${c.confidence}</div>
+     </div>`).join('')}</div>`;
+ }
+
+ function candidateMatrix08(whole){
+   const map=new Map();
+   whole.forEach(s=>s.candidates.forEach(c=>{
+     if(!map.has(c.n))map.set(c.n,{n:c.n,s2:null,s3:null,s4:null,support:0,avg:0});
+     const row=map.get(c.n);
+     row['s'+s.step]=c.confidence;
+     row.support++;
+   }));
+   const rows=[...map.values()].map(r=>{
+     const vals=[r.s2,r.s3,r.s4].filter(v=>Number.isFinite(v));
+     r.avg=vals.length?Math.round(vals.reduce((a,b)=>a+b,0)/vals.length):0;
+     return r;
+   }).sort((a,b)=>b.support-a.support||b.avg-a.avg||a.n-b.n);
+   return rows;
+ }
+
+ function renderMatrix08(whole,best){
+   const rows=candidateMatrix08(whole);
+   const finalSet=new Set(best.candidates.map(c=>c.n));
+   return `<div class="confidence-card">
+     <h3>계열별 번호 신뢰도 비교</h3>
+     <div class="confidence-note">
+       신뢰도는 당첨확률이 아니라, 각 계열 안에서의 상대적 후보 강도입니다.
+       빈도강도 55% + Replay 20% + Flow 10% + Dream 5% + 계열 Quality 10%로 계산합니다.
+     </div>
+     <div class="matrix-wrap"><table class="confidence-matrix">
+       <thead><tr><th>번호</th><th>2계열</th><th>3계열</th><th>4계열</th><th>채택 계열 수</th><th>평균</th><th>최종</th></tr></thead>
+       <tbody>${rows.map(r=>`<tr>
+         <td>${r.n}번</td>
+         <td>${r.s2??'-'}</td>
+         <td>${r.s3??'-'}</td>
+         <td>${r.s4??'-'}</td>
+         <td>${r.support}/3</td>
+         <td>${r.avg}</td>
+         <td>${finalSet.has(r.n)?'●':'-'}</td>
+       </tr>`).join('')}</tbody>
+     </table></div>
+   </div>`;
+ }
+
+ function selectionReason08(allRuns,best){
+   const sameRange=allRuns.filter(x=>String(x.limit)===String(best.limit)).sort((a,b)=>b.quality-a.quality||b.rate-a.rate);
+   const second=sameRange.find(x=>x.step!==best.step) || allRuns.find(x=>x!==best);
+   const qualityLead=second?best.quality-second.quality:best.quality;
+   const replayLead=second?best.rate-second.rate:best.rate;
+   const warning=sampleWarning08(best.sample);
+   return `<div class="confidence-card">
+     <h3>AI 최종 선택 근거</h3>
+     <div class="final-reason">
+       <div class="reason-line"><span>선택 범위</span><b>${best.limit==='all'?'전체':best.limit+'개'}</b></div>
+       <div class="reason-line"><span>선택 계열</span><b>${best.step}계열</b></div>
+       <div class="reason-line"><span>Pattern Quality</span><b>${best.quality}점</b></div>
+       <div class="reason-line"><span>Replay</span><b>${best.rate}%</b></div>
+       <div class="reason-line"><span>유효 비교</span><b>${best.checks}회</b></div>
+       <div class="reason-line"><span>차순위 대비 Quality</span><b>${qualityLead>=0?'+':''}${qualityLead}점</b></div>
+       <div class="reason-line"><span>차순위 대비 Replay</span><b>${replayLead>=0?'+':''}${replayLead}%p</b></div>
+     </div>
+     <div class="sample-warning ${warning.cls}">${warning.label} · ${warning.text}</div>
+     <p class="muted">현재 판정은 시험용이며 Classic AI Score 또는 Consensus AI에 반영하지 않습니다.</p>
+   </div>`;
+ }
+
  function renderSeriesGroups08(whole,best){
    const rows=whole.slice(0,3).map(s=>{
      const nums=s.candidates.slice(0,6).map(c=>c.n).sort((a,b)=>a-b);
@@ -773,6 +896,7 @@ loadData();
        <div class="series-group-balls">
          ${nums.map(n=>ball(n,false,'selected-ball')).join('')}
        </div>
+       ${renderConfidenceList08(s)}
      </div>`;
    }).join('');
 
@@ -792,12 +916,14 @@ loadData();
  }
 
  const cand=c=>`<div class="auto-candidate">${ball(c.n,true)}<div><b>${c.count}회</b><div class="auto-tags">Replay ${c.replay?'✔':'✖'} · Flow ${c.flow?'✔':'✖'} · Dream ${c.dream?'✔':'✖'}</div></div></div>`;
-   return `<div class="title">AI 자동탐색 시험 v0.8</div>
+   return `<div class="title">AI 자동탐색 Phase 1 v0.9</div>
    <div class="auto-v08"><h3>통합 AI 자동탐색</h3><p class="guide">20·30·50·전체와 2·3·4계열을 비교한 시험 결과입니다.</p>
    <div class="auto-grid"><div><b>${best.limit==='all'?'전체':best.limit+'개'}</b><span>선택 범위</span></div><div><b>${best.step}계열</b><span>선택 계열</span></div><div><b>Stage ${best.stage}</b><span>순도 ${best.purity}%</span></div><div><b>${best.quality}점</b><span>Pattern Quality</span></div><div><b>${best.rate}%</b><span>Replay</span></div><div><b>${best.checks}회</b><span>유효 비교</span></div></div>
    <p class="guide">최종 후보</p><div class="balls">${best.candidates.map(c=>ball(c.n,false,'selected-ball')).join('')}</div>
    <p class="muted">Classic AI Score에는 반영하지 않습니다.</p></div>
    ${renderSeriesGroups08(whole,best)}
+   ${renderMatrix08(whole,best)}
+   ${selectionReason08(runs,best)}
    <div class="auto-v08"><h3>계열별 전체 탐색 결과</h3>${whole.map(s=>`<div class="auto-series"><div class="head"><b>${s.step}계열 전체</b><span class="badge">Quality ${s.quality} · Replay ${s.rate}%</span></div><p class="muted">Dataset ${s.sample}회 · 비교 ${s.checks}회</p>${s.candidates.map(cand).join('')}</div>`).join('')}</div>`;
  }
  const prev=window.renderResult;
@@ -805,5 +931,6 @@ loadData();
 })();
 </script>
 
+<script src="interval_pattern.js?v=phase2-v1"></script>
 </body>
 </html>
