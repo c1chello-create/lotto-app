@@ -1,6 +1,6 @@
 
 /* =========================================================
-   Interval Pattern Engine v1.3 Target + AI
+   Interval Pattern Engine v1.4 AI Score
    독립 모듈
    - 직전 10 / 30 / 50회
    - 2계열: 2↔4, 4↔6, 6↔8 ...
@@ -10,8 +10,8 @@
    - Dream Chain / Classic AI Score 미연동
 ========================================================= */
 (function(){
-  if(window.__intervalPatternV13)return;
-  window.__intervalPatternV13=true;
+  if(window.__intervalPatternV14)return;
+  window.__intervalPatternV14=true;
 
   function ensureStyle(){
     if(document.getElementById('intervalPatternPhase2Style'))return;
@@ -79,6 +79,9 @@
     const manual=Number(el?.value||0);
     return manual>0 ? manual : latest+1;
   }
+
+  function baseRound(){return targetRound()-2;}
+  function baseRow(){return rowByRound(baseRound());}
 
   function rowByRound(round){
     return rowsDesc().find(r=>Number(r.round)===Number(round))||null;
@@ -328,6 +331,12 @@
     </div>`;
   }
 
+  function renderReferenceCard(windowSize,step){
+    const target=targetRound(),base=baseRound(),baseData=baseRow(),links=[];
+    for(let offset=step;offset<=windowSize;offset+=step){const round=base-offset,row=rowByRound(round);if(row)links.push({offset,round,row});}
+    return `<div class="reference-card"><div class="reference-head"><b>${target}회 예측 기준</b><span class="interval-badge">기준 ${base}회</span></div><div class="reference-link"><strong>기준 회차</strong><div><b>${base}회</b><div class="balls" style="margin-top:5px">${baseData?(baseData.numbers||[]).map(n=>ball(n,true)).join(''):'<span class="muted">데이터 없음</span>'}${baseData?.bonus?ball(baseData.bonus,true):''}</div></div></div>${links.slice(0,12).map(x=>`<div class="reference-link"><strong>직전 ${x.offset}</strong><div><b>${x.round}회</b><div class="balls" style="margin-top:5px">${(x.row.numbers||[]).map(n=>ball(n,true)).join('')}${x.row.bonus?ball(x.row.bonus,true):''}</div></div></div>`).join('')}</div>`;
+  }
+
   function renderWindow(windowSize){
     const results=[2,3,4].map(step=>analyzeSeries(windowSize,step));
     const allNums=[];
@@ -336,20 +345,20 @@
 
     return `<div class="interval-window">
       <div class="interval-window-title">
-        <b>추첨 대상 ${targetRound()}회 · 직전 ${windowSize}회</b>
+        <b>추첨 대상 ${targetRound()}회 · 기준 ${baseRound()}회 · 직전 ${windowSize}회</b>
         <span class="interval-badge">2·3·4계열</span>
       </div>
       <p class="guide">
-        추첨 대상 ${targetRound()}회를 기준으로 직전 간격 회차를 직접 찾아 반복번호와 동반번호를 추출합니다.
+        ${targetRound()}회를 예측하기 위해 ${baseRound()}회를 기준 회차로 먼저 표시하고, 그 기준에서 직전 간격 회차를 연결해 분석합니다.
         ${best?`현재 최고 반복번호는 ${best.n}번 · ${best.series}계열 · ${best.strength}입니다.`:''}
       </p>
-      ${results.map(renderSeries).join('')}
+      ${results.map(r=>renderReferenceCard(windowSize,r.step)+renderSeries(r)).join('')}
     </div>`;
   }
 
   function renderRoot(){
     return `<div class="interval-root">
-      <div class="title">Interval Pattern Engine v1.3 Target + AI</div>
+      <div class="title">Interval Pattern Engine v1.4 AI Score</div>
       <div class="interval-card">
         <h3>시간축 반복패턴 독립 분석</h3>
         <p class="guide">
@@ -372,7 +381,7 @@
         const box=document.getElementById('patternResult');
         if(box)box.insertAdjacentHTML('beforeend',renderRoot());
       }catch(e){
-        console.error('Interval Pattern Engine v1.3 Target + AI 오류',e);
+        console.error('Interval Pattern Engine v1.4 AI Score 오류',e);
       }
     };
   }

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>동반패턴 분석 v1.3 Target + AI 🍀</title>
+<title>동반패턴 분석 v1.4 AI Score 🍀</title>
 <link rel="stylesheet" href="style.css">
 <style>
 body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#101828}
@@ -125,13 +125,24 @@ body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"S
 .sample-warning.caution{background:#fffbe6;border:1px solid #eadf91;color:#7a6500}
 .sample-warning.normal{background:#eef9f0;border:1px solid #b9dfc0;color:#24733a}
 
+
+/* v1.4 AI Score Detail */
+.ai-score-detail-card{background:#fff;border:1px solid #d9e4f2;border-radius:18px;padding:14px;margin:12px}
+.ai-score-detail-card h3{margin:0 0 8px;color:#11366b}.ai-score-number{border-top:1px solid #eef2f7;padding:10px 0}.ai-score-number:first-child{border-top:0}
+.ai-score-summary{display:grid;grid-template-columns:44px 1fr 64px;gap:8px;align-items:center}.ai-score-summary button{border:0;background:transparent;padding:0;text-align:left;font:inherit;color:inherit;width:100%}
+.ai-score-total{text-align:right;font-weight:900;color:#11366b}.ai-score-breakdown{display:none;background:#f8fafc;border:1px solid #eef2f7;border-radius:14px;padding:10px;margin-top:8px}.ai-score-number.open .ai-score-breakdown{display:block}
+.ai-score-line{display:grid;grid-template-columns:1fr 56px 62px;gap:8px;align-items:center;padding:7px 0;border-top:1px solid #e9edf3;font-size:12px}.ai-score-line:first-child{border-top:0}.ai-score-line b{text-align:right;color:#11366b}.ai-score-line span:last-child{text-align:right;color:#667085}
+.ai-score-formula{background:#fffaf0;border:1px solid #f2d99b;border-radius:13px;padding:10px;margin:10px 0;font-size:12px;color:#667085;line-height:1.5}
+.reference-card{background:#eef6ff;border:1px solid #cfe0f5;border-radius:16px;padding:12px;margin:10px 0}.reference-head{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:8px}.reference-head b{color:#11366b}
+.reference-link{display:grid;grid-template-columns:82px 1fr;gap:8px;align-items:center;padding:8px 0;border-top:1px solid #dfeaf7}.reference-link:first-child{border-top:0}.reference-link strong{color:#8a5b00}
+
 </style>
 </head>
 <body>
 <div class="wrap">
 <header class="top">
 <div class="status"><span>9:41</span><span>▮▮▮ Wi‑Fi 100</span></div>
-<div class="titlebar"><a href="index.html">‹</a><div>동반패턴 분석 v1.3 Target + AI</div><span>🍀</span></div>
+<div class="titlebar"><a href="index.html">‹</a><div>동반패턴 분석 v1.4 AI Score</div><span>🍀</span></div>
 <nav class="tabs"><a class="active" href="pattern.html">패턴 분석</a><a href="index.html">상세 분석</a><a href="combo.html">조합 분석</a><a href="#">그래프 분석</a></nav>
 </header>
 <div class="card">
@@ -953,6 +964,27 @@ loadData();
 })();
 </script>
 
-<script src="interval_pattern.js?v=target-ai-v13"></script>
+<script>
+(function(){
+ if(window.__aiScoreDetailV14)return;window.__aiScoreDetailV14=true;
+ function calc(nums){
+  try{
+   const samples=getSampleRows(nums);const p2=freqFromIndexedSamples(samples,gapsForSeries('series2',samples.length));p2.step=2;const p3=freqFromIndexedSamples(samples,gapsForSeries('series3',samples.length));p3.step=3;
+   const auto=analyzeAuto(samples);const active=analysisMode==='series2'?[p2]:analysisMode==='series3'?[p3]:auto.slice(0,3);const candidates=scoreCandidates(active).slice(0,6);const groups=coOccurrenceGroups(samples,active);
+   const rr=replayRateForCandidates(samples,candidates,analysisMode);const replayTop=rr[0]?.topNums||[];const flows=buildFlowChains(samples,active);const flowMap={};flows.forEach(f=>f.nums.forEach(n=>flowMap[n]=(flowMap[n]||0)+f.count));
+   const boost=getDreamChainBoostData(samples,candidates,groups,analysisMode);const dreamSet=new Set((boost.chainPick||[]).map(Number));
+   const maxC=Math.max(1,...candidates.map(c=>Number(c.score||c.count||0))),maxR=Math.max(1,...replayTop.map(x=>Number(x.count||0))),maxF=Math.max(1,...Object.values(flowMap));
+   const quality=Math.min(100,Math.round((active[0]?.concentration||0)*100));
+   return candidates.map(c=>{const n=Number(c.n),fr=Math.round(Number(c.score||c.count||0)/maxC*100),co=typeof window.getIntervalContinuityScore==='function'?window.getIntervalContinuityScore(n):0,ri=replayTop.find(x=>Number(x.n)===n),rrr=ri?Math.round(Number(ri.count||0)/maxR*100):0,fl=flowMap[n]?Math.round(flowMap[n]/maxF*100):0,dr=dreamSet.has(n)?100:0;
+    const parts={frequency:{s:Math.round(fr*.40),m:40,r:fr},continuity:{s:Math.round(co*.20),m:20,r:co},replay:{s:Math.round(rrr*.15),m:15,r:rrr},flow:{s:Math.round(fl*.10),m:10,r:fl},dream:{s:Math.round(dr*.05),m:5,r:dr},quality:{s:Math.round(quality*.10),m:10,r:quality}};
+    const total=Object.values(parts).reduce((a,p)=>a+p.s,0);return{n,total,parts};}).sort((a,b)=>b.total-a.total||a.n-b.n);
+  }catch(e){console.warn(e);return[]}
+ }
+ function render(nums){const rows=calc(nums);if(!rows.length)return'';const L=(t,p)=>`<div class="ai-score-line"><span>${t}</span><b>${p.s}/${p.m}</b><span>원점수 ${p.r}</span></div>`;return `<div class="title">번호별 AI Score 상세</div><div class="ai-score-detail-card"><h3>AI Score 구성</h3><div class="ai-score-formula">Frequency 40% · Continuity 20% · Replay 15% · Flow 10% · Dream 5% · Pattern Quality 10%</div>${rows.map(r=>`<div class="ai-score-number" data-score-row><div class="ai-score-summary">${ball(r.n,true,'selected-ball')}<button type="button" data-score-toggle><b>${r.n}번 ▼</b><div class="muted">점수 구성 보기</div></button><div class="ai-score-total">${r.total}점</div></div><div class="ai-score-breakdown">${L('출현 Frequency',r.parts.frequency)}${L('Continuity',r.parts.continuity)}${L('Replay',r.parts.replay)}${L('Flow',r.parts.flow)}${L('Dream',r.parts.dream)}${L('Pattern Quality',r.parts.quality)}<div class="ai-score-line"><span><b>AI Score</b></span><b>${r.total}/100</b><span>합계</span></div></div></div>`).join('')}</div>`}
+ const prev=window.renderResult;if(typeof prev==='function'){window.renderResult=renderResult=function(nums){prev(nums);const box=document.getElementById('patternResult');if(box)box.insertAdjacentHTML('beforeend',render(nums));}}
+ document.addEventListener('click',e=>{const b=e.target.closest('[data-score-toggle]');if(b)b.closest('[data-score-row]')?.classList.toggle('open')});
+})();
+</script>
+<script src="interval_pattern.js?v=ai-score-v14"></script>
 </body>
 </html>
