@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>동반패턴 분석 v1.2 Continuity 🍀</title>
+<title>동반패턴 분석 v1.3 Target + AI 🍀</title>
 <link rel="stylesheet" href="style.css">
 <style>
 body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#101828}
@@ -131,7 +131,7 @@ body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"S
 <div class="wrap">
 <header class="top">
 <div class="status"><span>9:41</span><span>▮▮▮ Wi‑Fi 100</span></div>
-<div class="titlebar"><a href="index.html">‹</a><div>동반패턴 분석 v1.2 Continuity</div><span>🍀</span></div>
+<div class="titlebar"><a href="index.html">‹</a><div>동반패턴 분석 v1.3 Target + AI</div><span>🍀</span></div>
 <nav class="tabs"><a class="active" href="pattern.html">패턴 분석</a><a href="index.html">상세 분석</a><a href="combo.html">조합 분석</a><a href="#">그래프 분석</a></nav>
 </header>
 <div class="card">
@@ -142,6 +142,11 @@ body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"S
 <div class="rowbtn"><button class="sample-btn active" data-sample="50">50개 샘플</button><button class="sample-btn" data-sample="30">30개 샘플</button><button class="sample-btn" data-sample="20">20개 샘플</button></div>
 <div class="rowbtn"><button class="mode-btn active" data-mode="series2">2계열</button><button class="mode-btn" data-mode="series3">3계열</button><button class="mode-btn" data-mode="auto">AI 자동탐색</button></div>
 <label class="guide" style="display:block;margin-top:10px"><input type="checkbox" id="includeBonusPattern" checked> 보너스 번호 포함</label>
+<div style="margin-top:10px">
+  <label class="guide" for="targetRoundPattern"><b>추첨 대상 회차</b></label>
+  <input id="targetRoundPattern" class="input" inputmode="numeric" placeholder="예: 1233" style="margin-top:4px">
+  <p class="guide" style="margin:2px 0 0">비워두면 보유 데이터의 다음 회차를 자동 적용합니다.</p>
+</div>
 </div>
 <div id="patternStatus" class="guide" style="margin:12px">데이터를 불러오는 중입니다...</div>
 <div id="patternResult"></div>
@@ -502,10 +507,23 @@ function renderDreamChainBoost(samples,candidates,groups,mode){
 }
 
 function renderResult(nums){const samples=getSampleRows(nums);const p2=freqFromIndexedSamples(samples,gapsForSeries('series2',samples.length));p2.step=2;const p3=freqFromIndexedSamples(samples,gapsForSeries('series3',samples.length));p3.step=3;const auto=analyzeAuto(samples);const autoBest=auto[0]||p2;const active=analysisMode==='series2'?[p2]:analysisMode==='series3'?[p3]:auto.slice(0,3);const candidates=scoreCandidates(active);const groups=coOccurrenceGroups(samples,active);const maxScore=candidates[0]?.score||1;const pick=candidates.slice(0,6).map(x=>x.n).sort((a,b)=>a-b);const judgeTitle=analysisMode==='auto'?'AI 자동탐색':'선택 계열 분석';const judgeDesc=analysisMode==='auto'?`${autoBest.step}계열이 현재 샘플에서 가장 높은 반복 점수를 보였습니다.`:`${analysisMode==='series2'?'2계열':'3계열'} 간격 기준으로 샘플 내부 반복 패턴을 분석했습니다.`;$('patternResult').innerHTML=`<div class="card"><b>동반패턴 분석 요약</b><div class="balls" style="margin-top:10px">${nums.map(n=>ball(n)).join('')}</div><div class="metric"><div><b>${samples.length}</b><span>샘플 회차</span></div><div><b>${minHit(nums)}개+</b><span>포함 조건</span></div><div><b>${includeBonus()?'포함':'제외'}</b><span>보너스</span></div></div><div class="ai"><b>${judgeTitle}</b><p class="muted">${judgeDesc}</p><p class="muted">패턴 후보</p><div class="balls">${pick.map(n=>ball(n,false,'selected-ball')).join('')}</div></div></div><div class="title">패턴 후보 TOP</div><div class="card">${renderRankList(candidates,maxScore)}</div><div class="title">간격별 분석</div><div class="card">${renderPatternBox('2계열: 2·4·6·8 ...',p2)}${renderPatternBox('3계열: 3·6·9·12 ...',p3)}${analysisMode==='auto'?`<div class="box"><div class="head"><b>AI 자동탐색 TOP</b><span class="badge">${autoBest.step||'-'}계열 우선</span></div>${auto.slice(0,5).map(a=>`<p class="muted"><b>${a.step}계열</b> · 점수 ${a.score} · 비교 ${a.checks}개 · 집중도 ${Math.round(a.concentration*100)}%</p>`).join('')}</div>`:''}</div><div class="title">동반출현 번호군</div>${renderGroups(groups)}<div class="title">패턴 재현율</div>${renderReplayRate(samples,candidates,analysisMode)}<div class="title">흐름분석</div>${renderFlowChains(samples,active)}<div class="title">Dream Chain 반영</div>${renderDreamChainBoost(samples,candidates,groups,analysisMode)}<div class="title">AI Score 연동</div>${renderAiScorePreview(candidates,groups,samples,analysisMode)}<div class="title">샘플 회차 확인</div><div class="card"><p class="guide">동반번호가 확인된 최신 샘플 일부입니다.</p>${renderSamples(samples)}</div>`}
-async function loadData(){try{const res=await fetch('./data/lotto.json?ts='+Date.now());const data=await res.json();lottoData=data.sort((a,b)=>b.round-a.round);$('patternStatus').textContent=`전체 ${lottoData.length}개 회차 데이터를 불러왔습니다.`;const saved=JSON.parse(localStorage.getItem('haengun_my_nums')||'null');if(Array.isArray(saved)&&saved.length>=2)$('patternInput').value=saved.slice(0,6).join(' ')}catch(e){console.error(e);$('patternStatus').textContent='데이터 오류: data/lotto.json을 읽지 못했습니다.'}}
+async function loadData(){try{const res=await fetch('./data/lotto.json?ts='+Date.now());const data=await res.json();lottoData=data.sort((a,b)=>b.round-a.round);
+const targetInput=$('targetRoundPattern');
+if(targetInput && !targetInput.value && lottoData.length){
+  const savedTarget=Number(localStorage.getItem('haengun_target_round')||0);
+  targetInput.value=String(savedTarget>Number(lottoData[0].round)?savedTarget:Number(lottoData[0].round)+1);
+}
+$('patternStatus').textContent=`전체 ${lottoData.length}개 회차 데이터를 불러왔습니다.`;const saved=JSON.parse(localStorage.getItem('haengun_my_nums')||'null');if(Array.isArray(saved)&&saved.length>=2)$('patternInput').value=saved.slice(0,6).join(' ')}catch(e){console.error(e);$('patternStatus').textContent='데이터 오류: data/lotto.json을 읽지 못했습니다.'}}
 document.querySelectorAll('.sample-btn').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.sample-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');sampleLimit=Number(btn.dataset.sample)});
 document.querySelectorAll('.mode-btn').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');analysisMode=btn.dataset.mode});
-$('patternBtn').onclick=()=>{const nums=parseNums();if(nums)renderResult(nums)};
+$('patternBtn').onclick=()=>{
+  const nums=parseNums();
+  const targetInput=$('targetRoundPattern');
+  if(targetInput && Number(targetInput.value)>0){
+    localStorage.setItem('haengun_target_round',String(Number(targetInput.value)));
+  }
+  if(nums)renderResult(nums)
+};
 loadData();
 </script>
 
@@ -786,14 +804,18 @@ loadData();
      const flow=i<4;
      const dream=replay&&flow;
      const frequencyStrength=Math.round(x.count/maxCount*100);
+     const continuity=typeof window.getIntervalContinuityScore==='function'
+       ? window.getIntervalContinuityScore(x.n)
+       : 0;
      const confidence=Math.max(1,Math.min(100,Math.round(
-       frequencyStrength*0.55 +
-       (replay?100:0)*0.20 +
+       frequencyStrength*0.40 +
+       continuity*0.20 +
+       (replay?100:0)*0.15 +
        (flow?100:0)*0.10 +
        (dream?100:0)*0.05 +
        quality*0.10
      )));
-     return {n:x.n,count:x.count,replay,flow,dream,frequencyStrength,confidence,rank:i+1};
+     return {n:x.n,count:x.count,replay,flow,dream,frequencyStrength,continuity,confidence,rank:i+1};
    });
    return{step,limit,sample:s.length,checks,rate,quality,candidates};
  }
@@ -817,7 +839,7 @@ loadData();
        ${ball(c.n,true)}
        <div>
          <div class="confidence-bar"><i style="width:${Math.max(5,c.confidence)}%"></i></div>
-         <div class="confidence-meta">${c.count}회 · 빈도강도 ${c.frequencyStrength}% · Replay ${c.replay?'✔':'✖'} · Flow ${c.flow?'✔':'✖'} · Dream ${c.dream?'✔':'✖'}</div>
+         <div class="confidence-meta">${c.count}회 · 빈도 ${c.frequencyStrength}% · Continuity ${c.continuity||0}% · Replay ${c.replay?'✔':'✖'} · Flow ${c.flow?'✔':'✖'} · Dream ${c.dream?'✔':'✖'}</div>
        </div>
        <div class="confidence-score">${c.confidence}</div>
      </div>`).join('')}</div>`;
@@ -846,7 +868,7 @@ loadData();
      <h3>계열별 번호 신뢰도 비교</h3>
      <div class="confidence-note">
        신뢰도는 당첨확률이 아니라, 각 계열 안에서의 상대적 후보 강도입니다.
-       빈도강도 55% + Replay 20% + Flow 10% + Dream 5% + 계열 Quality 10%로 계산합니다.
+       빈도강도 40% + Continuity 20% + Replay 15% + Flow 10% + Dream 5% + 계열 Quality 10%로 계산합니다.
      </div>
      <div class="matrix-wrap"><table class="confidence-matrix">
        <thead><tr><th>번호</th><th>2계열</th><th>3계열</th><th>4계열</th><th>채택 계열 수</th><th>평균</th><th>최종</th></tr></thead>
@@ -931,6 +953,6 @@ loadData();
 })();
 </script>
 
-<script src="interval_pattern.js?v=continuity-v12"></script>
+<script src="interval_pattern.js?v=target-ai-v13"></script>
 </body>
 </html>

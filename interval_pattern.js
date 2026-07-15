@@ -1,6 +1,6 @@
 
 /* =========================================================
-   Interval Pattern Engine v1.2 Continuity
+   Interval Pattern Engine v1.3 Target + AI
    독립 모듈
    - 직전 10 / 30 / 50회
    - 2계열: 2↔4, 4↔6, 6↔8 ...
@@ -10,8 +10,8 @@
    - Dream Chain / Classic AI Score 미연동
 ========================================================= */
 (function(){
-  if(window.__intervalPatternV12)return;
-  window.__intervalPatternV12=true;
+  if(window.__intervalPatternV13)return;
+  window.__intervalPatternV13=true;
 
   function ensureStyle(){
     if(document.getElementById('intervalPatternPhase2Style'))return;
@@ -69,6 +69,19 @@
       ? window.LOTTO_DATA
       : (Array.isArray(window.lottoData)?window.lottoData:[]);
     return fallback.slice().sort((a,b)=>Number(b.round)-Number(a.round));
+  }
+
+
+  function targetRound(){
+    const rows=rowsDesc();
+    const latest=Number(rows[0]?.round||0);
+    const el=document.getElementById('targetRoundPattern');
+    const manual=Number(el?.value||0);
+    return manual>0 ? manual : latest+1;
+  }
+
+  function rowByRound(round){
+    return rowsDesc().find(r=>Number(r.round)===Number(round))||null;
   }
 
   function pool(row){
@@ -140,11 +153,12 @@
   }
 
   function analyzeSeries(windowSize,step){
-    const rows=rowsDesc().slice(0,windowSize);
+    const target=targetRound();
     const checkpoints=[];
     for(let offset=step;offset<=windowSize;offset+=step){
-      const row=rows[offset-1];
-      if(row)checkpoints.push({offset,row,numbers:pool(row)});
+      const round=target-offset;
+      const row=rowByRound(round);
+      if(row)checkpoints.push({offset,round,row,numbers:pool(row)});
     }
 
     const pairComparisons=[];
@@ -222,6 +236,17 @@
       comparisons:pairComparisons.length
     };
   }
+
+
+  window.getIntervalContinuityScore=function(number){
+    const n=Number(number);
+    const scores=[2,3,4].map(step=>{
+      const r=analyzeSeries(50,step);
+      const item=r.numbers.find(x=>Number(x.n)===n);
+      return Number(item?.continuity?.score||0);
+    }).filter(Number.isFinite);
+    return scores.length?Math.round(scores.reduce((a,b)=>a+b,0)/scores.length):0;
+  };
 
   function renderNumber(n,maxScore){
     const cls=n.strength==='초강세'?'super':n.strength==='강세'?'strong':n.strength==='분산 강세'?'distributed':'watch';
@@ -311,11 +336,11 @@
 
     return `<div class="interval-window">
       <div class="interval-window-title">
-        <b>직전 ${windowSize}회 샘플링</b>
+        <b>추첨 대상 ${targetRound()}회 · 직전 ${windowSize}회</b>
         <span class="interval-badge">2·3·4계열</span>
       </div>
       <p class="guide">
-        최신 회차를 기준으로 직전 간격 회차끼리 비교하여 반복번호와 동반번호를 추출합니다.
+        추첨 대상 ${targetRound()}회를 기준으로 직전 간격 회차를 직접 찾아 반복번호와 동반번호를 추출합니다.
         ${best?`현재 최고 반복번호는 ${best.n}번 · ${best.series}계열 · ${best.strength}입니다.`:''}
       </p>
       ${results.map(renderSeries).join('')}
@@ -324,7 +349,7 @@
 
   function renderRoot(){
     return `<div class="interval-root">
-      <div class="title">Interval Pattern Engine v1.2 Continuity</div>
+      <div class="title">Interval Pattern Engine v1.3 Target + AI</div>
       <div class="interval-card">
         <h3>시간축 반복패턴 독립 분석</h3>
         <p class="guide">
@@ -347,7 +372,7 @@
         const box=document.getElementById('patternResult');
         if(box)box.insertAdjacentHTML('beforeend',renderRoot());
       }catch(e){
-        console.error('Interval Pattern Engine v1.2 Continuity 오류',e);
+        console.error('Interval Pattern Engine v1.3 Target + AI 오류',e);
       }
     };
   }
