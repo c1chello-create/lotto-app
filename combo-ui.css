@@ -99,3 +99,57 @@ button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
   .combo-row.history-wide>div:last-child{grid-column:1/-1;text-align:right;margin-top:-3px}
 }
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+
+/* =========================================================
+   v1.7 Premium UI Add-on
+   - 좌우 여백 축소 / 글자 확대
+   - AI Score 산출 비율 패널
+   - AI 계산 근거 / Pattern 산출 근거 분리
+   - 0.18초 CSS accordion animation
+========================================================= */
+.combo-card{margin-left:9px!important;margin-right:9px!important;padding-left:14px!important;padding-right:14px!important}
+.combo-guide{font-size:13.5px!important}
+.ai-score-head b{font-size:17px!important}
+.ai-score-head span{font-size:13px!important}
+.ai-core-metric-top b,.ai-core-metric-top span{font-size:13px!important}
+.ai-core-bar{height:10px!important}
+
+.ai-ranking-shell{background:linear-gradient(180deg,#fffaf0 0,#fff 100%)!important}
+.ai-ranking-title{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.ai-ranking-title b{font-size:18px;color:#3f2c00}
+.ai-ranking-title span{font-size:11px;font-weight:900;color:#8a5b00;background:#fff1be;border:1px solid #e8ca70;border-radius:999px;padding:5px 8px;white-space:nowrap}
+.ai-weight-panel{margin:12px 0 15px;padding:14px;background:rgba(255,255,255,.86);border:1px solid #ead8a8;border-radius:17px;box-shadow:0 6px 18px rgba(117,82,7,.06)}
+.ai-weight-panel>div:first-child{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.ai-weight-panel h3{font-size:14px;margin:0;color:#654300}
+.ai-weight-panel small{font-size:10px;color:#8a795c}
+.ai-weight-row{display:grid;grid-template-columns:108px minmax(80px,1fr) 38px;align-items:center;gap:8px;margin:7px 0}
+.ai-weight-row span{font-size:12px;font-weight:800;color:#5a6070}
+.ai-weight-track{height:7px;background:#edf0f4;border-radius:999px;overflow:hidden}
+.ai-weight-track i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#e3b53c,#bb7600)}
+.ai-weight-row b{text-align:right;font-size:12px;color:#7b5100}
+.ai-weight-note{margin:10px 0 0;font-size:11px;line-height:1.5;color:#75694f}
+
+.premium-rank-item{border-top:1px solid #f0dfb7;padding:15px 0 4px}
+.premium-rank-item:first-of-type{border-top:0}
+.premium-rank-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.premium-rank-head b{font-size:15px;color:#805400}
+.premium-rank-head span{font-size:12px;font-weight:900;color:#163b70}
+
+.premium-accordion{margin-top:10px}
+.premium-accordion-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px;padding:10px 12px;border:1px solid #e3d3a8;border-radius:13px;background:#fff;color:#654300;font-weight:900;text-align:left;cursor:pointer}
+.premium-accordion-toggle+.premium-accordion-toggle{margin-top:7px}
+.premium-accordion-toggle:active{transform:translateY(1px)}
+.premium-accordion-toggle .acc-icon{display:inline-flex;align-items:center;gap:8px}
+.premium-accordion-toggle .acc-arrow{font-size:15px;transition:transform .18s ease}
+.premium-accordion-toggle[aria-expanded="true"] .acc-arrow{transform:rotate(180deg)}
+.premium-accordion-panel{display:grid;grid-template-rows:0fr;opacity:0;transition:grid-template-rows .18s ease,opacity .15s ease;margin-top:0}
+.premium-accordion-panel>div{overflow:hidden}
+.premium-accordion-panel.is-open{grid-template-rows:1fr;opacity:1;margin-top:7px}
+.premium-accordion-content{padding:12px 13px;border:1px dashed #d8bd72;border-radius:14px;background:linear-gradient(180deg,#fffef9,#fffaf0)}
+.premium-accordion-content p{margin:5px 0!important}
+
+@media(max-width:390px){
+  .ai-weight-row{grid-template-columns:92px minmax(65px,1fr) 34px;gap:6px}
+  .ai-weight-row span{font-size:11px}
+  .ai-ranking-title b{font-size:17px}
+}
