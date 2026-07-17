@@ -1,6 +1,6 @@
 
 /* =========================================================
-   Interval Pattern Engine v1.4 AI Score
+   Interval Pattern Engine v1.5 Explainable AI
    독립 모듈
    - 직전 10 / 30 / 50회
    - 2계열: 2↔4, 4↔6, 6↔8 ...
@@ -10,8 +10,8 @@
    - Dream Chain / Classic AI Score 미연동
 ========================================================= */
 (function(){
-  if(window.__intervalPatternV14)return;
-  window.__intervalPatternV14=true;
+  if(window.__intervalPatternV15)return;
+  window.__intervalPatternV15=true;
 
   function ensureStyle(){
     if(document.getElementById('intervalPatternPhase2Style'))return;
@@ -358,7 +358,7 @@
 
   function renderRoot(){
     return `<div class="interval-root">
-      <div class="title">Interval Pattern Engine v1.4 AI Score</div>
+      <div class="title">Interval Pattern Engine v1.5 Explainable AI</div>
       <div class="interval-card">
         <h3>시간축 반복패턴 독립 분석</h3>
         <p class="guide">
@@ -381,7 +381,7 @@
         const box=document.getElementById('patternResult');
         if(box)box.insertAdjacentHTML('beforeend',renderRoot());
       }catch(e){
-        console.error('Interval Pattern Engine v1.4 AI Score 오류',e);
+        console.error('Interval Pattern Engine v1.5 Explainable AI 오류',e);
       }
     };
   }

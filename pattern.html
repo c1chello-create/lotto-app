@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>동반패턴 분석 v1.4 AI Score 🍀</title>
+<title>동반패턴 분석 v1.5 Explainable AI 🍀</title>
 <link rel="stylesheet" href="style.css">
 <style>
 body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#101828}
@@ -142,7 +142,7 @@ body{background:#f5f7fb;margin:0;font-family:-apple-system,BlinkMacSystemFont,"S
 <div class="wrap">
 <header class="top">
 <div class="status"><span>9:41</span><span>▮▮▮ Wi‑Fi 100</span></div>
-<div class="titlebar"><a href="index.html">‹</a><div>동반패턴 분석 v1.4 AI Score</div><span>🍀</span></div>
+<div class="titlebar"><a href="index.html">‹</a><div>동반패턴 분석 v1.5 Explainable AI</div><span>🍀</span></div>
 <nav class="tabs"><a class="active" href="pattern.html">패턴 분석</a><a href="index.html">상세 분석</a><a href="combo.html">조합 분석</a><a href="#">그래프 분석</a></nav>
 </header>
 <div class="card">
@@ -985,6 +985,27 @@ loadData();
  document.addEventListener('click',e=>{const b=e.target.closest('[data-score-toggle]');if(b)b.closest('[data-score-row]')?.classList.toggle('open')});
 })();
 </script>
-<script src="interval_pattern.js?v=ai-score-v14"></script>
+<script>
+/* v1.5 Explainable AI Profile + Confidence + Combination Score */
+(function(){
+  if(window.__explainableAiV15)return; window.__explainableAiV15=true;
+  const clamp=(v,min=0,max=100)=>Math.max(min,Math.min(max,Math.round(Number(v)||0)));
+  function starText(v){v=clamp(v);return v>=85?'★★★★★':v>=70?'★★★★☆':v>=55?'★★★☆☆':v>=35?'★★☆☆☆':'★☆☆☆☆'}
+  function profileOf(m){const e=[['빈도형',m.frequency],['연속형',m.continuity],['Replay형',m.replay],['Flow형',m.flow],['Dream형',m.dream],['Quality형',m.quality]].sort((a,b)=>b[1]-a[1]);const top=e.filter(x=>x[1]>=70).slice(0,2).map(x=>x[0]);if(top.length>=2)return top.join(' + ');if(top.length===1)return top[0];const spread=Math.max(...e.map(x=>x[1]))-Math.min(...e.map(x=>x[1]));return spread<=20?'균형형':e[0][0]}
+  function confidenceOf(m,sampleCount){const values=[m.frequency,m.continuity,m.replay,m.flow,m.dream,m.quality];const support=values.filter(v=>v>=70).length/values.length*100;const avg=values.reduce((a,b)=>a+b,0)/values.length;const variance=values.reduce((s,v)=>s+Math.pow(v-avg,2),0)/values.length;const agreement=clamp(100-Math.sqrt(variance));const sampleQuality=sampleCount>=16?100:sampleCount>=9?75:sampleCount>=5?50:25;return clamp(support*.45+agreement*.35+sampleQuality*.20)}
+  function verdictOf(score,confidence,continuity){if(score>=75&&confidence>=75&&continuity>=70)return{text:'🟢 초강세 (추천)',cls:'super'};if(score>=60&&confidence>=60)return{text:'🟡 강세 (검토)',cls:'strong'};return{text:'⚪ 관찰 (참고)',cls:'watch'}}
+  function roleOf(m){return [['빈도',m.frequency],['연속',m.continuity],['Replay',m.replay],['Flow',m.flow],['Dream',m.dream],['Quality',m.quality]].sort((a,b)=>b[1]-a[1])[0][0]+' 중심'}
+  function buildDetails(nums){
+    const samples=getSampleRows(nums);const p2=freqFromIndexedSamples(samples,gapsForSeries('series2',samples.length));p2.step=2;const p3=freqFromIndexedSamples(samples,gapsForSeries('series3',samples.length));p3.step=3;const auto=analyzeAuto(samples);const active=analysisMode==='series2'?[p2]:analysisMode==='series3'?[p3]:auto.slice(0,3);const candidates=scoreCandidates(active).slice(0,10);const groups=coOccurrenceGroups(samples,active);const replayRates=replayRateForCandidates(samples,candidates,analysisMode);const replayTop=replayRates[0]?.topNums||[];const flows=buildFlowChains(samples,active);const flowMap={};flows.forEach(f=>f.nums.forEach(n=>flowMap[n]=(flowMap[n]||0)+f.count));const boost=getDreamChainBoostData(samples,candidates,groups,analysisMode);const dreamMap={};(boost.merged||[]).forEach(x=>dreamMap[x.n]=x.score);const maxCandidate=Math.max(1,...candidates.map(c=>Number(c.score||c.count||0)));const maxReplay=Math.max(1,...replayTop.map(x=>Number(x.count||0)));const maxFlow=Math.max(1,...Object.values(flowMap));const maxDream=Math.max(1,...Object.values(dreamMap));const qualityRaw=clamp((active[0]?.concentration||0)*70+Math.min(30,(samples.length/Math.max(1,sampleLimit))*30));
+    return {samples,groups,rows:candidates.slice(0,6).map(c=>{const n=Number(c.n);const frequency=clamp(Number(c.score||c.count||0)/maxCandidate*100);const continuity=typeof window.getIntervalContinuityScore==='function'?clamp(window.getIntervalContinuityScore(n)):0;const replayItem=replayTop.find(x=>Number(x.n)===n);const replay=clamp((replayItem?.count||0)/maxReplay*100);const flow=clamp((flowMap[n]||0)/maxFlow*100);const dream=clamp((dreamMap[n]||0)/maxDream*100);const quality=qualityRaw;const metrics={frequency,continuity,replay,flow,dream,quality};const aiScore=clamp(frequency*.40+continuity*.20+replay*.15+flow*.10+dream*.05+quality*.10);const confidence=confidenceOf(metrics,samples.length);return{n,aiScore,confidence,profile:profileOf(metrics),verdict:verdictOf(aiScore,confidence,continuity),metrics,role:roleOf(metrics)}}).sort((a,b)=>b.aiScore-a.aiScore||b.confidence-a.confidence||a.n-b.n)}
+  }
+  const metricRow=(label,value)=>`<div class="xai-metric"><span class="xai-label">${label}</span><span class="xai-stars">${starText(value)}</span><span class="xai-percent">${value}%</span></div>`;
+  function renderNumberCards(data){return `<div class="title">AI Profile · 번호별 분석</div><div class="xai-card"><h3>추천번호별 Explainable AI</h3><p class="guide">AI Score는 종합점수이며, Confidence는 여러 분석 항목의 합의도와 표본 품질입니다.</p>${data.rows.map(r=>`<div class="xai-number"><div class="xai-head">${ball(r.n,true,'selected-ball')}<div><b>${r.n}번</b><div class="xai-confidence">Confidence ${r.confidence}%</div></div><div class="xai-score"><b>${r.aiScore}점</b><span>AI Score</span></div></div><div class="xai-grid">${metricRow('빈도형',r.metrics.frequency)}${metricRow('연속형',r.metrics.continuity)}${metricRow('Replay',r.metrics.replay)}${metricRow('Flow',r.metrics.flow)}${metricRow('Dream',r.metrics.dream)}${metricRow('Quality',r.metrics.quality)}</div><div class="xai-profile"><b>AI Profile</b><br>${r.profile} · ${r.role}</div><div class="xai-verdict ${r.verdict.cls}">${r.verdict.text}</div></div>`).join('')}</div>`}
+  function renderCombination(data){const rows=data.rows;if(!rows.length)return'';const nums=rows.map(r=>r.n).sort((a,b)=>a-b);const avgScore=Math.round(rows.reduce((s,r)=>s+r.aiScore,0)/rows.length);const avgConfidence=Math.round(rows.reduce((s,r)=>s+r.confidence,0)/rows.length);const minScore=Math.min(...rows.map(r=>r.aiScore));const roleCount={};rows.forEach(r=>roleCount[r.role]=(roleCount[r.role]||0)+1);const roleDiversity=Object.keys(roleCount).length;const pairStrength=data.groups.pairs?.[0]?.count||0;const companionScore=clamp(pairStrength*7);const diversityScore=clamp(roleDiversity/Math.min(6,rows.length)*100);const combinationScore=clamp(avgScore*.55+avgConfidence*.20+minScore*.10+companionScore*.10+diversityScore*.05);const verdict=combinationScore>=75?'🟢 추천 조합':combinationScore>=60?'🟡 검토 조합':'⚪ 참고 조합';return `<div class="title">조합 AI Score</div><div class="combo-xai"><h3>${verdict}</h3><div class="balls" style="margin-top:10px">${nums.map(n=>ball(n,false,'selected-ball')).join('')}</div><div class="combo-grid"><div><b>${combinationScore}</b><span>조합 AI Score</span></div><div><b>${avgConfidence}%</b><span>평균 Confidence</span></div><div><b>${minScore}</b><span>최저 번호 점수</span></div><div><b>${companionScore}%</b><span>동반번호군 지지</span></div></div><div class="xai-profile"><b>조합 Profile</b><br>역할 다양성 ${roleDiversity}종 · ${Object.entries(roleCount).map(([k,v])=>`${k} ${v}개`).join(' · ')}</div><div style="margin-top:10px">${rows.map(r=>`<div class="combo-role"><span>${r.n}번</span><b>${r.role} · ${r.aiScore}점</b></div>`).join('')}</div><p class="muted">이 조합 점수는 기존 Classic AI Score를 변경하지 않는 참고 지표입니다.</p></div>`}
+  const previous=window.renderResult;if(typeof previous==='function'){window.renderResult=renderResult=function(nums){previous(nums);try{const data=buildDetails(nums);const box=document.getElementById('patternResult');if(box){box.insertAdjacentHTML('beforeend',renderNumberCards(data));box.insertAdjacentHTML('beforeend',renderCombination(data))}}catch(e){console.error('Explainable AI v1.5 오류',e)}}}
+})();
+
+</script>
+<script src="interval_pattern.js?v=explainable-v15"></script>
 </body>
 </html>
