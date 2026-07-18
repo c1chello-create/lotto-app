@@ -1,0 +1,20 @@
+행운로또 v1.8 Clean Core
+
+[정리]
+- GitHub Pages 실행에 필요하지 않은 Python/Streamlit 및 중복 파일 제거
+- 로또 데이터 경로를 data/lotto.json으로 단일화
+- 잘못 배치된 .github/workflows 내부 웹 파일 제거
+- 효과가 없던 ai_core_v09_bridge.js 제거
+- combo 화면 버전명을 v1.8 Clean Core로 변경
+- 브라우저 캐시 무효화를 위한 query version 갱신
+
+[유지]
+- 기존 Classic AI Score 산식
+- Premium UI
+- Explainable AI 카드
+- Dream Chain 1·2·3차
+- Companion / Replay / Flow / Pattern 표시
+- GitHub Actions 자동 데이터 업데이트
+
+[향후]
+- combo.js 엔진별 완전 분리는 별도 단계에서 진행
