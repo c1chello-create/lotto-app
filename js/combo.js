@@ -2647,10 +2647,39 @@ window.dispatchEvent(new CustomEvent('combo:legacy-ready'));
    v1.9 Phase 3-1 Consensus AI UI
    Consensus is a ranking weight only; it never blocks a number.
 ========================================================= */
+function consensusStars(value){
+  const filled=Math.max(0,Math.min(5,Math.round((Number(value)||0)/20)));
+  return `<span class="consensus-stars" aria-label="별점 ${filled}점">${'★'.repeat(filled)}${'☆'.repeat(5-filled)}</span>`;
+}
+function consensusBar(value){
+  const pct=Math.max(0,Math.min(100,Math.round(Number(value)||0)));
+  return `<span class="consensus-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i style="width:${pct}%"></i></span>`;
+}
 function renderConsensusCard(c){
   const x=c&&c.consensus;if(!x)return'';
+  const labels={companion:'Companion',frequency:'Frequency',continuity:'Continuity',pattern:'Pattern',replay:'Replay',flow:'Flow',dream:'Dream'};
+  const order=['frequency','continuity','replay','flow','pattern','dream','companion'];
+  const engineScores=x.engineScores||{};
+  const agreementCount=Number.isFinite(x.agreementCount)?x.agreementCount:order.filter(k=>(engineScores[k]||0)>=60).length;
+  const engineCount=Number.isFinite(x.engineCount)?x.engineCount:order.length;
   const top=(x.details||[]).slice().sort((a,b)=>b.score-a.score).slice(0,6);
-  return `<section class="consensus-card"><div class="consensus-head"><b>🤝 Consensus AI</b><span>${x.score}점 · ${x.label}</span></div><p class="combo-guide">번호를 제외하지 않고 Classic AI 순위를 15% 범위에서 보정합니다. 평균 지지 엔진 ${x.agreement}개</p><div class="consensus-number-grid">${top.map(d=>`<div><span>${ball(d.number,true,selectedNums.includes(d.number)?'selected-ball':'')}</span><b>${d.score}</b><small>${d.supporters.length}개 엔진</small></div>`).join('')}</div><details class="consensus-detail"><summary>엔진별 합의 근거</summary>${top.map(d=>`<p class="combo-guide"><b>${d.number}번</b> · ${d.supporters.length?d.supporters.join(' · '):'강한 지지 없음'} · 합의 ${d.score}점</p>`).join('')}</details></section>`;
+  const engineRows=order.map(key=>{
+    const score=Math.max(0,Math.min(100,Math.round(Number(engineScores[key])||0)));
+    const state=score>=60?'동의':score>=40?'부분 동의':'낮은 지지';
+    return `<div class="consensus-engine-row"><div class="consensus-engine-meta"><b>${labels[key]}</b><span>${consensusStars(score)}</span><strong>${score}%</strong></div>${consensusBar(score)}<small>${state}</small></div>`;
+  }).join('');
+  return `<section class="consensus-card">
+    <div class="consensus-head"><b>🤝 Consensus AI</b><span>${x.label}</span></div>
+    <div class="consensus-overall">
+      <div><small>Overall Agreement</small><b>${consensusStars(x.score)}</b></div>
+      <strong>${x.score}%</strong>
+      ${consensusBar(x.score)}
+      <p><b>${agreementCount} / ${engineCount}</b> Engine Agreement · Classic AI 순위를 최대 15% 보정</p>
+    </div>
+    <div class="consensus-engine-list">${engineRows}</div>
+    <details class="consensus-detail"><summary>번호별 합의 근거</summary><div class="consensus-number-grid">${top.map(d=>`<div><span>${ball(d.number,true,selectedNums.includes(d.number)?'selected-ball':'')}</span><b>${d.score}%</b><small>${d.supporters.length}개 엔진</small></div>`).join('')}</div>${top.map(d=>`<p class="combo-guide"><b>${d.number}번</b> · ${d.supporters.length?d.supporters.map(k=>labels[k]||k).join(' · '):'강한 지지 없음'} · 합의 ${d.score}%</p>`).join('')}</details>
+    <p class="consensus-note">Consensus가 낮아도 번호를 자동 제외하지 않습니다.</p>
+  </section>`;
 }
 const __phase31RenderAIScoreCard=renderAIScoreCard;
 renderAIScoreCard=function(c,maxes){return renderConsensusCard(c)+__phase31RenderAIScoreCard(c,maxes)};
@@ -2659,4 +2688,12 @@ renderRankedCombos=function(data){
   const html=__phase31RenderRankedCombos(data);
   return html.replace('기존 AI Score는 유지하고 Pattern Engine은 참고값으로 분리해 표시합니다.','Classic AI를 유지하면서 Consensus AI가 엔진 합의도에 따라 순위를 최대 15% 보정합니다. 번호를 자동 제외하지 않습니다.');
 };
-(function injectConsensusStyle(){if(document.getElementById('consensusPhase31Style'))return;const st=document.createElement('style');st.id='consensusPhase31Style';st.textContent=`.consensus-card{border:1px solid #bdd2f2;background:#f6f9ff;border-radius:18px;padding:14px;margin:12px 0}.consensus-head{display:flex;justify-content:space-between;gap:8px;align-items:center;color:#173b73}.consensus-head span{font-weight:900;font-size:13px}.consensus-number-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}.consensus-number-grid>div{background:#fff;border:1px solid #dce7f6;border-radius:14px;padding:8px 4px;text-align:center}.consensus-number-grid>div>b,.consensus-number-grid>div>small{display:block}.consensus-number-grid>div>b{color:#173b73;margin-top:4px}.consensus-number-grid>div>small{font-size:10px;color:#667085}.consensus-detail{margin-top:10px;border-top:1px dashed #bdd2f2;padding-top:8px}.consensus-detail summary{font-weight:900;color:#173b73;cursor:pointer}`;document.head.appendChild(st)})();
+(function injectConsensusStyle(){if(document.getElementById('consensusPhase32Style'))return;const st=document.createElement('style');st.id='consensusPhase32Style';st.textContent=`
+.consensus-card{border:1px solid #bdd2f2;background:linear-gradient(180deg,#f8fbff 0%,#f3f7ff 100%);border-radius:18px;padding:14px;margin:12px 0;color:#173b73}
+.consensus-head{display:flex;justify-content:space-between;gap:8px;align-items:center;border-bottom:1px solid #dce7f6;padding-bottom:10px}.consensus-head b{font-size:17px}.consensus-head span{font-weight:900;font-size:12px;background:#e9f1ff;border-radius:999px;padding:5px 8px}
+.consensus-overall{background:#fff;border:1px solid #dce7f6;border-radius:15px;padding:12px;margin-top:12px}.consensus-overall>div{display:flex;justify-content:space-between;align-items:center;gap:8px}.consensus-overall>div small{font-weight:900;color:#475467}.consensus-overall>strong{display:block;text-align:right;font-size:24px;margin:-24px 0 6px;color:#173b73}.consensus-overall p{margin:8px 0 0;font-size:12px;color:#667085}
+.consensus-stars{font-size:18px;letter-spacing:1px;color:#e1a800;white-space:nowrap}.consensus-bar{display:block;height:10px;background:#e8eef7;border-radius:999px;overflow:hidden}.consensus-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#4f8ee8,#173b73)}
+.consensus-engine-list{display:grid;gap:8px;margin-top:12px}.consensus-engine-row{background:#fff;border:1px solid #dce7f6;border-radius:13px;padding:9px 10px}.consensus-engine-meta{display:grid;grid-template-columns:1fr auto 44px;gap:6px;align-items:center;margin-bottom:6px}.consensus-engine-meta b{font-size:13px;color:#344054}.consensus-engine-meta .consensus-stars{font-size:13px}.consensus-engine-meta strong{text-align:right;font-size:13px}.consensus-engine-row small{display:block;margin-top:4px;font-size:10px;color:#667085;text-align:right}
+.consensus-number-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}.consensus-number-grid>div{background:#fff;border:1px solid #dce7f6;border-radius:14px;padding:8px 4px;text-align:center}.consensus-number-grid>div>b,.consensus-number-grid>div>small{display:block}.consensus-number-grid>div>b{color:#173b73;margin-top:4px}.consensus-number-grid>div>small{font-size:10px;color:#667085}.consensus-detail{margin-top:12px;border-top:1px dashed #bdd2f2;padding-top:9px}.consensus-detail summary{font-weight:900;color:#173b73;cursor:pointer}.consensus-note{font-size:11px;color:#667085;margin:10px 0 0}
+@media(max-width:390px){.consensus-engine-meta{grid-template-columns:1fr auto 40px}.consensus-stars{letter-spacing:0}.consensus-number-grid{grid-template-columns:repeat(2,1fr)}}
+`;document.head.appendChild(st)})();
