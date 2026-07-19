@@ -185,7 +185,21 @@ function renderSavedCombos(){let box=document.getElementById('savedCombos');if(!
 
 function comboScoreParts(nums,data,allFreq){const companion=companionIndexScore(nums,data),balance=zoneBalanceScore(nums),oddEven=oddEvenScore(nums),recent=recentTrendScore(nums),long=longTrendScore(nums,allFreq),historical=historicalHitScore(nums,data.rows)*0.35,learned=learningScore(nums),total=companion+balance+oddEven+recent+long+historical+learned;return{companion,balance,oddEven,recent,long,historical,learned,total}}
 function combinations(arr,k){const out=[];function rec(start,pick){if(pick.length===k){out.push(pick);return}for(let i=start;i<arr.length;i++)rec(i+1,[...pick,arr[i]])}rec(0,[]);return out}
-function makeRankedCombos(data){const companionPool=data.top.map(x=>x.n).filter(n=>!selectedNums.includes(n)),allFreq=frequencyMap(lottoData);let candidates=[];if(selectedNums.length>=6){combinations(selectedNums,4).forEach(s=>{combinations(companionPool.slice(0,12),2).forEach(c=>candidates.push({nums:[...s,...c].sort((a,b)=>a-b),replace:2}))});combinations(selectedNums,5).forEach(s=>{companionPool.slice(0,12).forEach(c=>candidates.push({nums:[...s,c].sort((a,b)=>a-b),replace:1}))});combinations(selectedNums,3).forEach(s=>{combinations(companionPool.slice(0,10),3).forEach(c=>candidates.push({nums:[...s,...c].sort((a,b)=>a-b),replace:3}))})}else{const need=6-selectedNums.length;combinations(companionPool.slice(0,15),need).forEach(c=>candidates.push({nums:[...selectedNums,...c].sort((a,b)=>a-b),replace:need}))}const seen=new Set();candidates=candidates.filter(c=>{const key=c.nums.join(',');if(seen.has(key))return false;seen.add(key);return true});let scored=candidates.map(c=>({...c,parts:comboScoreParts(c.nums,data,allFreq)})).sort((a,b)=>b.parts.total-a.parts.total||a.nums.join('').localeCompare(b.nums.join(''))).slice(0,10);if(!scored.length)return[];const max=scored[0].parts.total||1,min=scored[scored.length-1].parts.total||0;return scored.map((x,i)=>{const trust=Math.round(62+((x.parts.total-min)/(max-min||1))*34);return{...x,rank:i+1,grade:gradeFromRank(i),trust:Math.max(55,Math.min(96,trust)),stars:starByTrust(trust)}})}
+function makeRankedCombos(data){
+  const companionPool=data.top.map(x=>x.n).filter(n=>!selectedNums.includes(n)),allFreq=frequencyMap(lottoData);let candidates=[];
+  if(selectedNums.length>=6){
+    combinations(selectedNums,4).forEach(s=>combinations(companionPool.slice(0,12),2).forEach(c=>candidates.push({nums:[...s,...c].sort((a,b)=>a-b),replace:2})));
+    combinations(selectedNums,5).forEach(s=>companionPool.slice(0,12).forEach(c=>candidates.push({nums:[...s,c].sort((a,b)=>a-b),replace:1})));
+    combinations(selectedNums,3).forEach(s=>combinations(companionPool.slice(0,10),3).forEach(c=>candidates.push({nums:[...s,...c].sort((a,b)=>a-b),replace:3})));
+  }else{
+    const need=6-selectedNums.length;combinations(companionPool.slice(0,15),need).forEach(c=>candidates.push({nums:[...selectedNums,...c].sort((a,b)=>a-b),replace:need}));
+  }
+  const seen=new Set(); candidates=candidates.filter(c=>{const key=c.nums.join(',');if(seen.has(key))return false;seen.add(key);return true});
+  let scored=candidates.map(c=>({...c,parts:comboScoreParts(c.nums,data,allFreq)}));
+  if(window.ConsensusEngine) scored=window.ConsensusEngine.enrich(scored,data); else scored.sort((a,b)=>b.parts.total-a.parts.total);
+  scored=scored.slice(0,10); if(!scored.length)return[];
+  return scored.map((x,i)=>{const trust=x.finalScore||x.classicTrust||Math.round(62+i*-2);return{...x,rank:i+1,grade:gradeFromRank(i),trust:Math.max(55,Math.min(98,trust)),stars:starByTrust(trust)}})
+}
 
 function pctOf(value,max){return Math.max(0,Math.min(100,Math.round(((value||0)/(max||1))*100)))}
 function starsFromScore(p){if(p>=88)return'★★★★★';if(p>=75)return'★★★★☆';if(p>=60)return'★★★☆☆';if(p>=40)return'★★☆☆☆';return'★☆☆☆☆'}
@@ -2627,3 +2641,22 @@ window.ComboLegacy = Object.freeze({
   loadSavedCombos, learnedHitRate, comboStructure
 });
 window.dispatchEvent(new CustomEvent('combo:legacy-ready'));
+
+
+/* =========================================================
+   v1.9 Phase 3-1 Consensus AI UI
+   Consensus is a ranking weight only; it never blocks a number.
+========================================================= */
+function renderConsensusCard(c){
+  const x=c&&c.consensus;if(!x)return'';
+  const top=(x.details||[]).slice().sort((a,b)=>b.score-a.score).slice(0,6);
+  return `<section class="consensus-card"><div class="consensus-head"><b>🤝 Consensus AI</b><span>${x.score}점 · ${x.label}</span></div><p class="combo-guide">번호를 제외하지 않고 Classic AI 순위를 15% 범위에서 보정합니다. 평균 지지 엔진 ${x.agreement}개</p><div class="consensus-number-grid">${top.map(d=>`<div><span>${ball(d.number,true,selectedNums.includes(d.number)?'selected-ball':'')}</span><b>${d.score}</b><small>${d.supporters.length}개 엔진</small></div>`).join('')}</div><details class="consensus-detail"><summary>엔진별 합의 근거</summary>${top.map(d=>`<p class="combo-guide"><b>${d.number}번</b> · ${d.supporters.length?d.supporters.join(' · '):'강한 지지 없음'} · 합의 ${d.score}점</p>`).join('')}</details></section>`;
+}
+const __phase31RenderAIScoreCard=renderAIScoreCard;
+renderAIScoreCard=function(c,maxes){return renderConsensusCard(c)+__phase31RenderAIScoreCard(c,maxes)};
+const __phase31RenderRankedCombos=renderRankedCombos;
+renderRankedCombos=function(data){
+  const html=__phase31RenderRankedCombos(data);
+  return html.replace('기존 AI Score는 유지하고 Pattern Engine은 참고값으로 분리해 표시합니다.','Classic AI를 유지하면서 Consensus AI가 엔진 합의도에 따라 순위를 최대 15% 보정합니다. 번호를 자동 제외하지 않습니다.');
+};
+(function injectConsensusStyle(){if(document.getElementById('consensusPhase31Style'))return;const st=document.createElement('style');st.id='consensusPhase31Style';st.textContent=`.consensus-card{border:1px solid #bdd2f2;background:#f6f9ff;border-radius:18px;padding:14px;margin:12px 0}.consensus-head{display:flex;justify-content:space-between;gap:8px;align-items:center;color:#173b73}.consensus-head span{font-weight:900;font-size:13px}.consensus-number-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}.consensus-number-grid>div{background:#fff;border:1px solid #dce7f6;border-radius:14px;padding:8px 4px;text-align:center}.consensus-number-grid>div>b,.consensus-number-grid>div>small{display:block}.consensus-number-grid>div>b{color:#173b73;margin-top:4px}.consensus-number-grid>div>small{font-size:10px;color:#667085}.consensus-detail{margin-top:10px;border-top:1px dashed #bdd2f2;padding-top:8px}.consensus-detail summary{font-weight:900;color:#173b73;cursor:pointer}`;document.head.appendChild(st)})();

@@ -6,10 +6,11 @@
     replay: global.ReplayEngine,
     flow: global.FlowEngine,
     dream: global.DreamEngine,
-    score: global.AIScoreEngine
+    score: global.AIScoreEngine,
+    consensus: global.ConsensusEngine
   });
   const api = {
-    version: '1.9.0-phase2.1',
+    version: '1.9.0-phase3.1',
     analyze(nums) {
       const legacy = global.ComboLegacy;
       const selected = nums || (legacy ? legacy.getState().selectedNums : []);
@@ -23,6 +24,7 @@
         replay: e.replay.analyze(selected),
         flow: e.flow.analyze(selected),
         dream: e.dream.analyze(selected),
+        consensus: e.consensus ? e.consensus.scoreCombo(selected, companion) : null,
         generatedAt: new Date().toISOString()
       };
     },
