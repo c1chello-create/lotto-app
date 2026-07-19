@@ -27,3 +27,10 @@
 - 기존 AI Score·추천순위·Dream Chain·Pattern 참고값 유지
 - combo.html 스크립트 로드 순서와 버전 표기 갱신
 - ARCHITECTURE.md 추가
+
+[v1.9 Phase 3-1]
+- ConsensusEngine 추가
+- Companion, Frequency, Continuity, Pattern, Replay, Flow, Dream의 번호별 지지도를 통합
+- Classic AI 85% + Consensus AI 15% 보정으로 최종 랭킹 산출
+- Consensus가 낮아도 번호를 자동 제외하지 않는 weight-only 정책 적용
+- 추천조합별 Consensus 카드와 엔진별 합의 근거 표시
