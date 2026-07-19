@@ -34,3 +34,8 @@
 - Classic AI 85% + Consensus AI 15% 보정으로 최종 랭킹 산출
 - Consensus가 낮아도 번호를 자동 제외하지 않는 weight-only 정책 적용
 - 추천조합별 Consensus 카드와 엔진별 합의 근거 표시
+
+[v1.9 Phase 3-2]
+- Consensus AI Overall Agreement 별점/퍼센트/막대그래프 추가
+- 7개 엔진별 합의 강도 시각화 추가
+- 번호 자동 제외 없는 15% 보정 정책 유지

@@ -13,3 +13,9 @@ Companion, Frequency, Continuity, Pattern, Replay, Flow, Dream
 - Consensus 점수가 낮은 번호도 자동 제외하지 않습니다.
 - 기존 입력, Dream Preview, Dream Chain, 적중분석, 저장 기능을 유지합니다.
 - Consensus 상세 근거는 추천조합 카드에서 확인할 수 있습니다.
+
+
+## Phase 3-2 UI
+- Overall Agreement 별점, 백분율, 진행 막대 표시
+- Frequency, Continuity, Replay, Flow, Pattern, Dream, Companion별 별점·백분율·막대 표시
+- 번호별 지지 근거는 접이식 상세 영역으로 유지
