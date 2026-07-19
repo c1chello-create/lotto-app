@@ -908,7 +908,8 @@ function injectHistoryWideStyle(){
 }
 
 function renderHistory(){injectHistoryWideStyle();const matches=rangeMatches();if(!matches.length){$('history').innerHTML=`<div class="combo-card center">조건에 맞는 회차가 없습니다.</div>`;return}$('history').innerHTML=matches.map(x=>{const row=x.row,hit=x.hit,tag=`${hit.normal}${hit.bonus&&includeBonus()?'+B':''}개`,nums=row.numbers.map(n=>tinyBall(n,selectedNums.includes(n)?'selected-ball':'')).join('');return`<div class="combo-row history-wide"><div class="round-cell"><b>${row.round}회</b><span>${row.date}</span></div><div class="history-balls">${nums}</div><div>${tinyBall(row.bonus,selectedNums.includes(row.bonus)?'selected-ball':'')}</div><div><span class="hit-tag">${tag}</span></div></div>`}).join('')}
-function renderAll(){renderDreamBridge();if(!selectedNums.length)return;setStatusText();renderSummary();renderCompanion();renderSavedCombos();renderHistory()}
+function renderAllLegacy(){renderDreamBridge();if(!selectedNums.length)return;setStatusText();renderSummary();renderCompanion();renderSavedCombos();renderHistory()}
+function renderAll(){if(window.ComboUI&&typeof window.ComboUI.renderAll==='function')return window.ComboUI.renderAll();return renderAllLegacy()}
 async function loadData(){try{const res=await fetch('./data/lotto.json?ts='+Date.now());const data=await res.json();if(!Array.isArray(data))throw new Error('lotto.json 배열 아님');lottoData=data.sort((a,b)=>b.round-a.round);window.LOTTO_DATA=lottoData;window.lottoData=lottoData;$('status').textContent=`전체 ${lottoData.length}개 회차 데이터를 불러왔습니다.`;setTimeout(()=>{renderDreamBridge();renderSavedCombos()},0);const saved=JSON.parse(localStorage.getItem('haengun_my_nums')||'null');if(Array.isArray(saved)&&saved.length>=2){selectedNums=saved.slice(0,6).sort((a,b)=>a-b);$('comboInput').value=selectedNums.join(' ');renderAll()}}catch(e){console.error(e);$('status').textContent='데이터 오류: data/lotto.json을 읽지 못했습니다.'}}
 function addModeButtons(){const box=document.querySelector('.combo-btn-row');if(!box||document.getElementById('modePartial'))return;const wrap=document.createElement('div');wrap.className='combo-btn-row';wrap.innerHTML=`<button id="modePartial" class="active">부분일치</button><button id="modeExact">완전일치</button>`;box.insertAdjacentElement('afterend',wrap);$('modePartial').onclick=()=>{matchMode='partial';$('modePartial').classList.add('active');$('modeExact').classList.remove('active');renderAll()};$('modeExact').onclick=()=>{matchMode='exact';$('modeExact').classList.add('active');$('modePartial').classList.remove('active');renderAll()}}
 function bindEvents(){setTimeout(renderDreamBridge,0);$('analyzeBtn').onclick=()=>{const nums=parseNums();if(!nums)return;selectedNums=nums;renderAll()};document.querySelectorAll('.range-btn').forEach(btn=>{btn.onclick=()=>{document.querySelectorAll('.range-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');matchRange=btn.dataset.range;renderAll()}});$('includeBonus').onchange=()=>renderAll();addModeButtons()}
@@ -2608,3 +2609,21 @@ function renderRankedCombos(data){
     panel.classList.toggle('is-open',!open);
   });
 })();
+
+
+/* v1.9 Phase 2-1 compatibility bridge ------------------------------------
+ * Exposes stable, read-only access to the legacy implementation while the
+ * engines are consumed through independent modules. Existing score formulas
+ * and UI output remain unchanged.
+ */
+window.ComboLegacy = Object.freeze({
+  getState(){ return { lottoData, selectedNums, matchRange, matchMode, includeBonus:includeBonus() }; },
+  setSelectedNums(nums){ selectedNums=uniqNums(nums).slice(0,6); return selectedNums.slice(); },
+  sourceRows, rangeMatches, allMatches, minHit, rowPool, frequencyMap, pairScore,
+  companionAnalysis, comboScoreParts, makeRankedCombos, patternSeriesScores,
+  replayScoreFor, flowScoreFor, dreamScoreFor, calcPatternLinkedScoreFor,
+  readPatternScoreFor, renderDreamBridge, setStatusText, renderSummary,
+  renderCompanion, renderSavedCombos, renderHistory, renderAllLegacy,
+  loadSavedCombos, learnedHitRate, comboStructure
+});
+window.dispatchEvent(new CustomEvent('combo:legacy-ready'));
