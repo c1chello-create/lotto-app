@@ -18,3 +18,12 @@
 
 [향후]
 - combo.js 엔진별 완전 분리는 별도 단계에서 진행
+
+[v1.9 Phase 2-1]
+- AI Core 공통 실행 파이프라인 추가
+- Companion, Pattern, Replay, Flow, Dream, AI Score 엔진 모듈 추가
+- ComboUI 오케스트레이터 추가
+- 기존 combo.js에 안정적인 ComboLegacy 호환 브리지 추가
+- 기존 AI Score·추천순위·Dream Chain·Pattern 참고값 유지
+- combo.html 스크립트 로드 순서와 버전 표기 갱신
+- ARCHITECTURE.md 추가

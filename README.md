@@ -32,3 +32,15 @@
 
 ## 주의
 GitHub Pages가 정상 갱신되기 전까지 기존 저장소를 삭제하지 말고, 먼저 별도 브랜치나 테스트 저장소에서 확인하는 것이 안전합니다.
+
+## v1.9 Phase 2-1
+
+조합분석 페이지는 기존 계산 결과를 유지하면서 AI Core 기반 모듈 구조를 사용합니다.
+
+- `js/ai-core.js`: 엔진 실행 통합
+- `js/combo-ui.js`: 화면 실행 순서 관리
+- `js/engines/`: Companion, Pattern, Replay, Flow, Dream, AI Score 엔진
+- `js/combo.js`: 검증된 기존 계산식과 호환 브리지
+
+GitHub Pages에서는 별도의 빌드 과정 없이 기존과 동일하게 사용할 수 있습니다.
+자세한 구조는 `ARCHITECTURE.md`를 참고하세요.
