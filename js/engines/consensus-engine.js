@@ -55,10 +55,16 @@
       const agreementBonus=Math.max(0,supporters.length-2)*2.5;
       return {number:n,score:clamp(weighted+agreementBonus),supporters,scores};
     });
+    const engineScores={};
+    Object.keys(weights).forEach(key=>{
+      engineScores[key]=clamp(details.reduce((sum,item)=>sum+(Number(item.scores&&item.scores[key])||0),0)/(details.length||1));
+    });
     const score=clamp(details.reduce((s,x)=>s+x.score,0)/(details.length||1));
     const agreement=Math.round(details.reduce((s,x)=>s+x.supporters.length,0)/(details.length||1)*10)/10;
+    const agreementCount=Object.values(engineScores).filter(value=>value>=60).length;
+    const engineCount=Object.keys(engineScores).length;
     const label=score>=85?'매우 높은 합의':score>=72?'높은 합의':score>=58?'보통 합의':score>=42?'낮은 합의':'매우 낮은 합의';
-    return {score,label,agreement,details,weights,mode:'weight-only'};
+    return {score,label,agreement,agreementCount,engineCount,engineScores,details,weights,mode:'weight-only'};
   }
   function enrich(candidates, companionData){
     if(!Array.isArray(candidates)||!candidates.length)return [];
