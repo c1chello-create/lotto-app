@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>행운로또 AI 백테스트 v1.0</title>
   <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="css/backtest.css?v=bt100">
+  <link rel="stylesheet" href="css/backtest.css?v=bt101">
 </head>
 <body>
 <div class="bt-wrap">
@@ -22,7 +22,7 @@
       <label>검증 회차</label>
       <select id="roundSelect" class="bt-control"></select>
       <label>내 후보번호 <small>(2~6개, 선택)</small></label>
-      <input id="userNums" class="bt-control" inputmode="numeric" placeholder="예: 7 12 21 29 34 42">
+      <input id="userNums" class="bt-control" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="예: 7 12 21 29 34 42 (공백·쉼표 가능)">
       <label>꿈 키워드 <small>(선택)</small></label>
       <input id="dreamKeyword" class="bt-control" placeholder="예: 물, 새, 돼지">
       <div class="bt-options">
@@ -49,8 +49,8 @@
     <section id="batchResult"></section>
   </main>
 </div>
-<script src="js/engines/backtest-engine.js?v=bt100"></script>
-<script src="js/engines/backtest-report.js?v=bt100"></script>
-<script src="js/backtest.js?v=bt100"></script>
+<script src="js/engines/backtest-engine.js?v=bt101"></script>
+<script src="js/engines/backtest-report.js?v=bt101"></script>
+<script src="js/backtest.js?v=bt101"></script>
 </body>
 </html>
