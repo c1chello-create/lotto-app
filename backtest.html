@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>행운로또 AI 백테스트 v1.0</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="css/backtest.css?v=bt100">
+</head>
+<body>
+<div class="bt-wrap">
+  <header class="bt-top">
+    <a href="combo.html" aria-label="뒤로">‹</a>
+    <div><b>AI 백테스트</b><small>미래 데이터 차단 검증</small></div>
+    <span>🧪</span>
+  </header>
+
+  <main>
+    <section class="bt-card">
+      <h2>회차별 독립 검증</h2>
+      <p class="bt-guide">선택 회차의 당첨번호는 계산에서 제외하고, 그 이전 회차만 사용해 추천 결과를 재현합니다.</p>
+      <label>검증 회차</label>
+      <select id="roundSelect" class="bt-control"></select>
+      <label>내 후보번호 <small>(2~6개, 선택)</small></label>
+      <input id="userNums" class="bt-control" inputmode="numeric" placeholder="예: 7 12 21 29 34 42">
+      <label>꿈 키워드 <small>(선택)</small></label>
+      <input id="dreamKeyword" class="bt-control" placeholder="예: 물, 새, 돼지">
+      <div class="bt-options">
+        <label><input id="includeBonus" type="checkbox" checked> 보너스 적중 포함</label>
+        <label>학습범위
+          <select id="scopeSelect"><option value="50">최근 50회</option><option value="100" selected>최근 100회</option><option value="all">전체 이전 회차</option></select>
+        </label>
+      </div>
+      <button id="runBtn" class="bt-primary">선택 회차 백테스트</button>
+    </section>
+
+    <div id="status" class="bt-status">데이터를 불러오는 중입니다…</div>
+    <section id="singleResult"></section>
+
+    <section class="bt-card">
+      <h2>구간 자동검증</h2>
+      <p class="bt-guide">각 회차마다 그 이전 데이터만 사용해 동일한 절차를 반복합니다. 브라우저 부담을 줄이기 위해 300회까지 제공합니다.</p>
+      <div class="bt-range-buttons">
+        <button data-count="20">최근 20회</button><button data-count="50" class="active">최근 50회</button><button data-count="100">최근 100회</button><button data-count="300">최근 300회</button>
+      </div>
+      <button id="batchBtn" class="bt-primary bt-secondary">구간 백테스트 실행</button>
+      <div id="progress" class="bt-progress" hidden><i></i><span>0%</span></div>
+    </section>
+    <section id="batchResult"></section>
+  </main>
+</div>
+<script src="js/engines/backtest-engine.js?v=bt100"></script>
+<script src="js/engines/backtest-report.js?v=bt100"></script>
+<script src="js/backtest.js?v=bt100"></script>
+</body>
+</html>
