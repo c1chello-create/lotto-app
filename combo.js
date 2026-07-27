@@ -14,7 +14,7 @@ function rangeMatches(){return matchRowsFrom(sourceRows())}
 function countByThreshold(threshold){return matchRowsFrom(lottoData,threshold).length}
 function exactWinningRows(){if(selectedNums.length!==6)return[];const key=selectedNums.slice().sort((a,b)=>a-b).join(',');return lottoData.filter(row=>(row.numbers||[]).slice().sort((a,b)=>a-b).join(',')===key).sort((a,b)=>b.round-a.round)}
 function setStatusText(){const rule=matchMode==='exact'?'완전일치':'부분일치';$('status').textContent=`전체 ${lottoData.length}개 회차 데이터를 불러왔습니다. / 현재 기준: ${rule}`}
-function renderSummary(){const matches=allMatches(),range=rangeMatches(),last=matches[0],gap=last?lottoData.findIndex(x=>x.round===last.row.round)+1:'-',exact=exactWinningRows(),threshold=minHit();let extra='';if(selectedNums.length>=4){extra=`<div><b>${countByThreshold(4)}회</b><span>4개 이상</span></div><div><b>${countByThreshold(5)}회</b><span>5개 이상</span></div>`}else{extra=`<div><b>${threshold}개+</b><span>분석 기준</span></div><div><b>${includeBonus()?'포함':'제외'}</b><span>보너스</span></div>`}$('summary').innerHTML=`<div class="combo-card"><b>${selectedNums.length}개 번호 조합 분석</b><div class="combo-selected">${selectedNums.map(n=>ball(n)).join('')}</div><p class="combo-guide">${matchMode==='exact'?'선택한 번호가 모두 동시에 나온 회차만 분석합니다.':'선택한 번호 중 '+threshold+'개 이상 나온 회차를 기준으로 분석합니다.'}</p><div class="summary-metrics"><div><b>${matches.length}회</b><span>전체 출현</span></div><div><b>${range.length}회</b><span>현재 범위</span></div><div><b>${last?last.row.round+'회':'-'}</b><span>최근 출현</span></div><div><b>${gap}</b><span>미출현 기간</span></div>${extra}<div><b>${selectedNums.length===6?exact.length+'회':'해당없음'}</b><span>완전일치</span></div></div></div>`}
+function renderSummary(){const matches=allMatches(),range=rangeMatches(),last=matches[0],gap=last?lottoData.findIndex(x=>x.round===last.row.round)+1:'-',exact=exactWinningRows(),threshold=minHit();let extra='';if(selectedNums.length>=4){extra=`<button type="button" class="summary-metric-btn" onclick="openHitHistorySheet(4)" aria-label="4개 이상 적중 회차 보기"><b>${countByThreshold(4)}회</b><span>4개 이상</span><em>상세보기</em></button><div><b>${countByThreshold(5)}회</b><span>5개 이상</span></div>`}else{extra=`<div><b>${threshold}개+</b><span>분석 기준</span></div><div><b>${includeBonus()?'포함':'제외'}</b><span>보너스</span></div>`}$('summary').innerHTML=`<div class="combo-card"><b>${selectedNums.length}개 번호 조합 분석</b><div class="combo-selected">${selectedNums.map(n=>ball(n)).join('')}</div><p class="combo-guide">${matchMode==='exact'?'선택한 번호가 모두 동시에 나온 회차만 분석합니다.':'선택한 번호 중 '+threshold+'개 이상 나온 회차를 기준으로 분석합니다.'}</p><div class="summary-metrics"><div><b>${matches.length}회</b><span>전체 출현</span></div><div><b>${range.length}회</b><span>현재 범위</span></div><div><b>${last?last.row.round+'회':'-'}</b><span>최근 출현</span></div><div><b>${gap}</b><span>미출현 기간</span></div>${extra}<div><b>${selectedNums.length===6?exact.length+'회':'해당없음'}</b><span>완전일치</span></div></div></div>`}
 function companionAnalysis(){const rows=rangeMatches(),counts={};for(let i=1;i<=45;i++)counts[i]=0;rows.forEach(x=>{rowPool(x.row).forEach(n=>{if(!selectedNums.includes(n))counts[n]++})});const max=Math.max(...Object.values(counts),1);const top=Object.entries(counts).map(([n,c])=>({n:Number(n),count:c,index:Math.round((c/max)*100)})).filter(x=>x.count>0).sort((a,b)=>b.count-a.count||a.n-b.n).slice(0,15);return{rows,top,recommend:top.slice(0,3).map(x=>x.n),counts,max}}
 function frequencyMap(rows){const m={};for(let i=1;i<=45;i++)m[i]=0;rows.forEach(row=>(row.numbers||[]).forEach(n=>m[n]++));return m}
 function pairScore(a,b,rows){let c=0;rows.forEach(x=>{const p=rowPool(x.row||x);if(p.includes(a)&&p.includes(b))c++});return c}
@@ -131,29 +131,45 @@ function getUserInputPool(){
   const raw=(document.getElementById('comboInput').value||'').trim();
   return [...new Set(raw.split(/[\s,]+/).map(v=>Number(v)).filter(n=>Number.isInteger(n)&&n>=1&&n<=45))].sort((a,b)=>a-b);
 }
+function aiFlowOverlap(pool, nums){
+  const target=[...new Set((nums||[]).map(Number).filter(n=>n>=1&&n<=45))].sort((a,b)=>a-b);
+  const matched=pool.filter(n=>target.includes(n));
+  const pct=pool.length?Math.round((matched.length/pool.length)*100):0;
+  return {target,matched,pct};
+}
+function aiFlowStars(pct){
+  if(pct>=84)return '★★★★★';
+  if(pct>=67)return '★★★★☆';
+  if(pct>=50)return '★★★☆☆';
+  if(pct>=34)return '★★☆☆☆';
+  return '★☆☆☆☆';
+}
 function renderMyNumberFilter(info){
   const box=document.getElementById('myNumberFilterResult');
   if(!box||!info)return;
   const pool=getUserInputPool();
-  if(!pool.length){box.innerHTML=`<p class="combo-guide" style="color:#b42318">내 번호 필터를 사용하려면 위 분석번호 입력칸에 후보 번호를 먼저 입력하세요.</p>`;return}
-  const sources=[...info.final,...info.base,...info.top.map(x=>x.n)];
-  const filtered=pool.filter(n=>sources.includes(n));
-  const topMap=new Map(info.top.map(x=>[x.n,x]));
-  const reason=n=>{
-    const r=[];
-    if(info.final.includes(n))r.push('Preview');
-    if(info.base.includes(n))r.push('기본꿈');
-    if(topMap.has(n))r.push('동반후보');
-    return r.join('+')||'필터';
-  };
-  box.innerHTML=`<div style="border-top:1px solid #e7edf5;margin-top:10px;padding-top:10px">
-    <b>🔎 내 번호 필터 1차 예상</b>
-    <p class="combo-guide">분석번호 입력칸의 번호 중 Preview 결과와 겹치는 번호만 추렸습니다.</p>
+  if(!pool.length){box.innerHTML=`<p class="combo-guide" style="color:#b42318">AI Flow 비교를 사용하려면 위 분석번호 입력칸에 후보 번호를 먼저 입력하세요.</p>`;return}
+
+  const chain=info.chain||[];
+  const judge=dreamAiJudge(info);
+  const stages=[
+    {label:'Dream Preview',nums:info.final||[]},
+    {label:'1차 Chain',nums:chain[0]?.final||info.final||[]},
+    {label:'2차 Chain',nums:chain[1]?.final||chain[0]?.final||info.final||[]},
+    {label:'3차 Chain',nums:chain[2]?.final||chain[1]?.final||info.final||[]},
+    {label:'AI Final',nums:judge.pick||info.final||[],final:true}
+  ].map(x=>({...x,...aiFlowOverlap(pool,x.nums)}));
+
+  box.innerHTML=`<div class="ai-flow-card">
+    <div class="ai-flow-title"><b>🤖 AI Flow 비교</b><span>내 번호와 단계별 결과 비교</span></div>
     <div class="combo-guide"><b>내 번호 후보</b></div>
     <div class="combo-selected">${pool.map(n=>ball(n,true)).join('')}</div>
-    <div class="combo-guide" style="margin-top:8px"><b>1차 예상</b></div>
-    <div class="combo-selected">${filtered.length?filtered.map(n=>ball(n,true,'selected-ball')).join(''):'<span class="combo-guide">겹치는 번호가 없습니다.</span>'}</div>
-    ${filtered.length?`<p class="combo-guide">${filtered.map(n=>`${n}번: ${reason(n)}`).join(' · ')}</p>`:''}
+    <div class="ai-flow-list">${stages.map(stage=>`<div class="ai-flow-row ${stage.final?'is-final':''}">
+      <div class="ai-flow-row-head"><b>${stage.label}</b><span>${stage.pct}% · ${aiFlowStars(stage.pct)}</span></div>
+      <div class="ai-flow-balls">${stage.target.map(n=>ball(n,true,stage.matched.includes(n)?'selected-ball':'')).join('')}</div>
+      <div class="ai-flow-match"><span>일치 ${stage.matched.length}/${pool.length}</span><span>${stage.matched.length?stage.matched.map(n=>ball(n,true,'selected-ball')).join(''):'일치 번호 없음'}</span></div>
+    </div>`).join('')}</div>
+    <p class="combo-guide">겹침률은 입력한 내 번호 후보 중 각 단계 결과에 포함된 비율입니다. 기존 AI Score와 추천 계산에는 영향을 주지 않습니다.</p>
   </div>`;
 }
 function renderDreamBridge(){
@@ -164,6 +180,88 @@ function renderDreamBridge(){
   const btn=document.getElementById('dreamComboBtn');
   if(btn&&!btn.dataset.bound){btn.dataset.bound='1';btn.onclick=()=>{const kw=(document.getElementById('dreamComboInput').value||'').trim();if(!kw){alert('꿈 키워드를 입력하세요.');return}const usePreview=document.getElementById('dreamAiPreview')?document.getElementById('dreamAiPreview').checked:true;if(usePreview&&lottoData.length){const preview=dreamCompanionPreview(kw);renderDreamPreviewResult(preview)}else{const base=dreamNumberMap(kw);lastDreamPreviewInfo={keyword:kw,base,top:[],addon:[],final:base,range:'기본',rows:0};renderDreamPreviewResult(lastDreamPreviewInfo)}}}
 }
+
+let hitHistoryFilter=4;
+function hitHistoryItems(filter){
+  return lottoData.map(row=>({row,hit:hitInfo(row)})).filter(x=>{
+    if(filter==='all')return x.hit.total>=4;
+    return x.hit.total===Number(filter);
+  }).sort((a,b)=>b.row.round-a.row.round);
+}
+function ensureHitHistorySheet(){
+  let wrap=document.getElementById('hitHistorySheetWrap');
+  if(wrap)return wrap;
+  wrap=document.createElement('div');
+  wrap.id='hitHistorySheetWrap';
+  wrap.className='hit-sheet-wrap';
+  wrap.innerHTML=`<div class="hit-sheet-backdrop" onclick="closeHitHistorySheet()"></div><section class="hit-sheet" role="dialog" aria-modal="true" aria-label="4개 이상 적중 회차"><div class="hit-sheet-handle"></div><div class="hit-sheet-head"><div><b>4개 이상 적중 회차</b><p id="hitSheetSubtitle">선택 번호의 과거 적중 기록</p></div><button type="button" onclick="closeHitHistorySheet()" aria-label="닫기">✕</button></div><div class="hit-sheet-tabs" id="hitSheetTabs"></div><div class="hit-sheet-body" id="hitSheetBody"></div><div class="hit-sheet-detail" id="hitSheetDetail"></div></section>`;
+  document.body.appendChild(wrap);
+  return wrap;
+}
+function openHitHistorySheet(filter=4){
+  if(selectedNums.length<4){alert('번호를 4개 이상 입력한 뒤 확인하세요.');return}
+  hitHistoryFilter=filter;
+  const wrap=ensureHitHistorySheet();
+  wrap.classList.add('open');
+  document.body.classList.add('hit-sheet-lock');
+  renderHitHistorySheet();
+}
+function closeHitHistorySheet(){
+  const wrap=document.getElementById('hitHistorySheetWrap');
+  if(wrap)wrap.classList.remove('open');
+  document.body.classList.remove('hit-sheet-lock');
+}
+function setHitHistoryFilter(filter){
+  hitHistoryFilter=filter;
+  renderHitHistorySheet();
+}
+function renderHitHistorySheet(){
+  const tabs=document.getElementById('hitSheetTabs'),body=document.getElementById('hitSheetBody'),detail=document.getElementById('hitSheetDetail');
+  if(!tabs||!body)return;
+  const defs=[['all','전체'],[4,'4개'],[5,'5개'],[6,'6개']];
+  tabs.innerHTML=defs.map(([value,label])=>`<button type="button" class="${String(hitHistoryFilter)===String(value)?'active':''}" onclick="setHitHistoryFilter('${value}')">${label}</button>`).join('');
+  const items=hitHistoryItems(hitHistoryFilter);
+  body.innerHTML=items.length?items.map(x=>`<button type="button" class="hit-round-row" onclick="showHitRoundDetail(${x.row.round})"><span><b>${x.row.round}회</b><small>${x.row.date||''}</small></span><span class="hit-round-balls">${(x.row.numbers||[]).map(n=>ball(n,true,selectedNums.includes(n)?'selected-ball':'')).join('')}<i>+</i>${ball(x.row.bonus,true,selectedNums.includes(x.row.bonus)?'selected-ball':'')}</span><strong>${x.hit.total}개</strong></button>`).join(''):`<div class="hit-sheet-empty">해당 적중 회차가 없습니다.</div>`;
+  if(detail)detail.innerHTML='';
+  const sub=document.getElementById('hitSheetSubtitle');
+  if(sub)sub.textContent=`${items.length}개 회차 · 회차를 누르면 상세 비교가 표시됩니다.`;
+}
+function showHitRoundDetail(round){
+  const detail=document.getElementById('hitSheetDetail');
+  const row=lottoData.find(x=>Number(x.round)===Number(round));
+  if(!detail||!row)return;
+  const hit=hitInfo(row);
+  const winning=[...(row.numbers||[])];
+  const matched=selectedNums.filter(n=>winning.includes(n)||(includeBonus()&&n===row.bonus));
+  const missed=selectedNums.filter(n=>!matched.includes(n));
+  detail.innerHTML=`<div class="hit-detail-card"><div class="hit-detail-head"><b>${row.round}회 상세 비교</b><span>${row.date||''}</span></div><div class="hit-detail-label">당첨번호</div><div class="combo-selected">${winning.map(n=>ball(n,true,selectedNums.includes(n)?'selected-ball':'')).join('')}<span class="hit-plus">+</span>${ball(row.bonus,true,selectedNums.includes(row.bonus)?'selected-ball':'')}</div><div class="hit-detail-grid"><div><b>${hit.total}개</b><span>총 일치</span></div><div><b>${hit.normal}개</b><span>일반번호</span></div><div><b>${hit.bonus?'포함':'없음'}</b><span>보너스</span></div></div><div class="hit-detail-label">일치 번호</div><div class="combo-selected">${matched.length?matched.map(n=>ball(n,true,'selected-ball')).join(''):'없음'}</div><div class="hit-detail-label">미일치 번호</div><div class="combo-selected">${missed.length?missed.map(n=>ball(n,true)).join(''):'없음'}</div></div>`;
+  detail.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+(function injectAiFlowAndHitSheetStyle(){
+  if(document.getElementById('aiFlowHitSheetStyle'))return;
+  const st=document.createElement('style');
+  st.id='aiFlowHitSheetStyle';
+  st.textContent=`
+    .summary-metrics .summary-metric-btn{appearance:none;font:inherit;color:inherit;background:linear-gradient(180deg,#fff,#f7fbff);border:1px solid #b9d8ff;border-radius:12px;padding:8px;cursor:pointer;position:relative}
+    .summary-metrics .summary-metric-btn b,.summary-metrics .summary-metric-btn span{display:block}
+    .summary-metrics .summary-metric-btn em{display:block;font-style:normal;font-size:10px;color:#1769aa;margin-top:3px;font-weight:800}
+    .ai-flow-card{border-top:1px solid #dbe7f5;margin-top:12px;padding-top:12px}
+    .ai-flow-title{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px}.ai-flow-title span{font-size:11px;color:#667085}
+    .ai-flow-list{display:grid;gap:8px;margin-top:10px}.ai-flow-row{border:1px solid #e4eaf2;border-radius:14px;padding:10px;background:#fff}.ai-flow-row.is-final{border-color:#f0c96a;background:#fffaf0}
+    .ai-flow-row-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:7px}.ai-flow-row-head span{font-size:12px;font-weight:900;color:#365b8c}
+    .ai-flow-balls{display:flex;flex-wrap:wrap;gap:5px}.ai-flow-match{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:7px;padding-top:7px;border-top:1px dashed #e4e7ec;font-size:11px;color:#667085}.ai-flow-match>span:last-child{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:3px}
+    .hit-sheet-lock{overflow:hidden}.hit-sheet-wrap{position:fixed;inset:0;z-index:99999;visibility:hidden;pointer-events:none}.hit-sheet-wrap.open{visibility:visible;pointer-events:auto}.hit-sheet-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.45);opacity:0;transition:opacity .18s}.hit-sheet-wrap.open .hit-sheet-backdrop{opacity:1}
+    .hit-sheet{position:absolute;left:0;right:0;bottom:0;max-height:88vh;background:#fff;border-radius:22px 22px 0 0;transform:translateY(102%);transition:transform .18s ease;display:flex;flex-direction:column;box-shadow:0 -10px 35px rgba(15,23,42,.22)}.hit-sheet-wrap.open .hit-sheet{transform:translateY(0)}
+    .hit-sheet-handle{width:44px;height:5px;border-radius:99px;background:#d0d5dd;margin:8px auto 4px}.hit-sheet-head{display:flex;justify-content:space-between;align-items:flex-start;padding:8px 16px}.hit-sheet-head b{font-size:17px}.hit-sheet-head p{margin:3px 0 0;color:#667085;font-size:12px}.hit-sheet-head button{border:0;background:#f2f4f7;border-radius:50%;width:34px;height:34px;font-size:16px}
+    .hit-sheet-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:6px 16px 10px}.hit-sheet-tabs button{border:1px solid #d0d5dd;background:#fff;border-radius:10px;padding:9px 4px;font-weight:800}.hit-sheet-tabs button.active{background:#1769aa;color:#fff;border-color:#1769aa}
+    .hit-sheet-body{overflow:auto;padding:0 12px 14px;min-height:120px}.hit-round-row{width:100%;display:grid;grid-template-columns:66px 1fr 42px;align-items:center;gap:7px;border:0;border-top:1px solid #eef1f5;background:#fff;padding:10px 4px;text-align:left}.hit-round-row>span:first-child b,.hit-round-row>span:first-child small{display:block}.hit-round-row small{font-size:10px;color:#98a2b3;margin-top:2px}.hit-round-balls{display:flex;flex-wrap:wrap;gap:3px;align-items:center}.hit-round-balls i{font-style:normal;color:#98a2b3}.hit-round-row strong{color:#1769aa;text-align:right}.hit-sheet-empty{text-align:center;padding:32px;color:#667085}
+    .hit-sheet-detail{padding:0 12px 16px;overflow:auto}.hit-detail-card{border:1px solid #b9d8ff;background:#f8fbff;border-radius:16px;padding:12px}.hit-detail-head{display:flex;justify-content:space-between;gap:8px;align-items:center}.hit-detail-head span{font-size:11px;color:#667085}.hit-detail-label{font-size:12px;font-weight:900;color:#475467;margin:10px 0 5px}.hit-detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}.hit-detail-grid div{background:#fff;border:1px solid #dbe7f5;border-radius:10px;padding:8px;text-align:center}.hit-detail-grid b,.hit-detail-grid span{display:block}.hit-detail-grid span{font-size:10px;color:#667085;margin-top:2px}.hit-plus{align-self:center;color:#98a2b3;font-weight:900}
+    @media(min-width:720px){.hit-sheet{left:50%;right:auto;width:620px;transform:translate(-50%,102%)}.hit-sheet-wrap.open .hit-sheet{transform:translate(-50%,0)}}
+  `;
+  document.head.appendChild(st);
+})();
+
 function learnedHitRate(nums){
   const rows=lottoData.map(row=>{const normal=nums.filter(n=>(row.numbers||[]).includes(n)).length,bonus=nums.includes(row.bonus);return{row,normal,bonus,total:normal+(bonus?1:0)}});
   const hit3=rows.filter(x=>x.normal>=3||x.total>=3).length,hit4=rows.filter(x=>x.normal>=4||x.total>=4).length,hit5=rows.filter(x=>x.normal>=5||x.total>=5).length;
