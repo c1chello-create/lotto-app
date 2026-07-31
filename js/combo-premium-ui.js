@@ -77,12 +77,70 @@ function renderRankedCombos(data){
     try{return global.CompanionEngine?global.CompanionEngine.analyze():companionAnalysis();}
     catch(e){return {rows:[],top:[],recommend:[],counts:{},max:1};}
   }
+  function optimizerRows(){
+    const pools=[global.LOTTO_DATA,global.lottoData];
+    for(const rows of pools){if(Array.isArray(rows)&&rows.length)return rows;}
+    try{if(typeof lottoData!=='undefined'&&Array.isArray(lottoData))return lottoData;}catch(e){}
+    return [];
+  }
+  function normalizedMap(map){
+    const vals=[];for(let n=1;n<=45;n++)vals.push(Number(map[n])||0);
+    const min=Math.min(...vals),max=Math.max(...vals),out={};
+    for(let n=1;n<=45;n++)out[n]=clamp(((Number(map[n])||0)-min)/(max-min||1)*100);
+    return out;
+  }
+  function frequencyMapLocal(rows){
+    const out={};for(let n=1;n<=45;n++)out[n]=0;
+    (rows||[]).forEach(r=>(r.numbers||[]).forEach(n=>{n=Number(n);if(n>=1&&n<=45)out[n]++;}));
+    return out;
+  }
+  function optimizerFallbackScore(nums,data){
+    const rows=optimizerRows(),recent=rows.slice(0,50),prior=rows.slice(50,100);
+    const allFreq=normalizedMap(frequencyMapLocal(rows));
+    const recentFreq=normalizedMap(frequencyMapLocal(recent));
+    const priorFreq=normalizedMap(frequencyMapLocal(prior));
+    const companion={};for(let n=1;n<=45;n++)companion[n]=0;
+    ((data&&data.top)||[]).forEach(x=>companion[Number(x.n)]=clamp(x.index));
+
+    let series=null,replay=null,flow=null,dream=null;
+    try{series=typeof global.patternSeriesScores==='function'?global.patternSeriesScores(nums):null;}catch(e){}
+    try{replay=typeof global.replayScoreFor==='function'?global.replayScoreFor(nums):null;}catch(e){}
+    try{flow=typeof global.flowScoreFor==='function'?global.flowScoreFor(nums):null;}catch(e){}
+    try{dream=typeof global.dreamScoreFor==='function'?global.dreamScoreFor(nums):null;}catch(e){}
+
+    const patternBy={},replayBy={},flowBy={};
+    const pList=(series&&series.candidateScores)||[];
+    const pMax=Math.max(...pList.map(x=>Number(x.score)||0),1);
+    pList.forEach(x=>patternBy[Number(x.n)]=clamp((Number(x.score)||0)/pMax*100));
+    const rList=(replay&&replay.top)||[];
+    const rMax=Math.max(...rList.map(x=>Number(x.count)||0),1);
+    rList.forEach(x=>replayBy[Number(x.n)]=clamp((Number(x.count)||0)/rMax*100));
+    const fList=(flow&&flow.list)||[];const fRaw={};
+    fList.forEach(x=>(x.chain||[]).forEach(n=>fRaw[Number(n)]=(fRaw[Number(n)]||0)+(Number(x.count)||0)));
+    const fMax=Math.max(...Object.values(fRaw),1);Object.entries(fRaw).forEach(([n,v])=>flowBy[Number(n)]=clamp(v/fMax*100));
+
+    const details=nums.map(n=>{
+      const frequency=allFreq[n]||0;
+      const continuity=clamp(50+(recentFreq[n]-priorFreq[n])*.55);
+      const pattern=patternBy[n]||0,replayScore=replayBy[n]||0,flowScore=flowBy[n]||0;
+      const dreamScore=clamp((pattern*.35)+(replayScore*.35)+(flowScore*.20)+(companion[n]||0)*.10);
+      const score=clamp(frequency*.40+continuity*.20+replayScore*.15+flowScore*.10+pattern*.10+dreamScore*.05);
+      const scores={frequency,continuity,replay:replayScore,flow:flowScore,pattern,dream:dreamScore,companion:companion[n]||0};
+      const supporters=Object.keys(scores).filter(k=>scores[k]>=60);
+      return {number:n,score,supporters,scores};
+    });
+    const score=clamp(details.reduce((s,x)=>s+x.score,0)/(details.length||1));
+    return {score,label:'Optimizer local score',details,mode:'optimizer-local',sourceRows:rows.length};
+  }
   function evaluate(nums,data,target){
     const normalized=clean(nums), key=keyOf(normalized);
     const cacheKey=`${target}|${key}`;
     if(state.cache.has(cacheKey))return state.cache.get(cacheKey);
     let consensus=null;
     try{consensus=global.ConsensusEngine&&global.ConsensusEngine.scoreCombo(normalized,data);}catch(e){console.warn('Optimizer consensus score error',e);}
+    const engineDetails=consensus&&Array.isArray(consensus.details)?consensus.details:[];
+    const degenerate=!engineDetails.length||engineDetails.every(x=>clamp(x.score)===6)||(!global.ComboLegacy&&engineDetails.every(x=>clamp(x.score)<=10));
+    if(degenerate)consensus=optimizerFallbackScore(normalized,data);
     const details=(consensus&&Array.isArray(consensus.details)?consensus.details:normalized.map(n=>({number:n,score:0,supporters:[]})))
       .map(x=>({number:Number(x.number),score:clamp(x.score),supporters:x.supporters||[]}))
       .sort((a,b)=>a.number-b.number);
@@ -186,7 +244,7 @@ function renderRankedCombos(data){
       <div class="combo-selected score-opt-final">${chosen.nums.map(n=>ball(n,true,base.includes(n)?'selected-ball':'')).join('')}</div>
       <button type="button" class="combo-btn score-opt-apply" data-opt-apply="${chosen.nums.join(',')}">대표 최적해 적용</button>
       ${tiesHtml}
-      <p class="combo-guide score-opt-note">※ 번호별 점수는 Consensus AI의 현재 분석 합의점수이며 당첨 확률이 아닙니다. 1개 교체는 전체 탐색, 2~3개 교체는 iPhone 성능을 고려한 단계형 후보 탐색입니다.</p>
+      <p class="combo-guide score-opt-note">※ 번호별 점수는 현재 AI 데이터와 Pattern·Replay·Flow 신호를 종합한 최적화 점수이며 당첨 확률이 아닙니다. 1개 교체는 전체 탐색, 2~3개 교체는 iPhone 성능을 고려한 단계형 후보 탐색입니다.</p>
     </div>`;
   }
   async function run(){
