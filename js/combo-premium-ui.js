@@ -38,7 +38,7 @@ function renderRankedCombos(data){
     const combos=makeRankedCombos(data);
     if(!combos.length)return`<div class="combo-card ai-ranking-shell"><b>🏆 AI 조합 랭킹</b><p class="combo-guide">추천조합을 만들 만큼 동반번호가 부족합니다. 전체 회차로 바꿔보세요.</p></div>`;
     const maxes={companion:Math.max(...combos.map(c=>c.parts.companion||0),1),trend:Math.max(...combos.map(c=>(c.parts.recent||0)+(c.parts.long||0)),1),structure:Math.max(...combos.map(c=>(c.parts.balance||0)+(c.parts.oddEven||0)),1),longlearn:Math.max(...combos.map(c=>(c.parts.historical||0)+(c.parts.learned||0)),1)};
-    return `<div class="combo-card ai-ranking-shell"><div class="ai-ranking-title"><b>🏆 AI 조합 랭킹 TOP 10</b><span>Explainable AI</span></div><p class="combo-guide">기존 AI Score는 유지하고 Pattern Engine은 참고값으로 분리해 표시합니다.</p>${v170WeightPanel()}${combos.map(c=>`<section class="premium-rank-item"><div class="premium-rank-head"><b>${c.rank}위 · ${c.grade}</b><span>종합 ${c.trust}점</span></div><div class="combo-selected">${c.nums.map(n=>ball(n,true,selectedNums.includes(n)?'selected-ball':'')).join('')}</div>${renderAIScoreCard(c,maxes)}${renderComboReport(c.nums)}<div class="combo-btn-row" style="margin-top:8px"><button onclick="saveRecommendedCombo('${c.nums.join(',')}','${c.grade}',${c.trust})">저장</button><button onclick="analyzeSavedCombo('${c.nums.join(',')}')">적중분석</button></div></section>`).join('')}</div>`;
+    return `<div class="combo-card ai-ranking-shell"><div class="ai-ranking-title"><b>🏆 AI 조합 랭킹 TOP 10</b><span>Explainable AI</span></div><p class="combo-guide">기존 AI Score는 유지하고 Pattern Engine은 참고값으로 분리해 표시합니다.</p>${v170WeightPanel()}${combos.map(c=>`<section class="premium-rank-item"><div class="premium-rank-head"><b>${c.rank}위 · ${c.grade}</b><span>종합 ${c.trust}점</span></div><div class="combo-selected">${c.nums.map(n=>ball(n,true,selectedNums.includes(n)?'selected-ball':'')).join('')}</div>${renderAIScoreCard(c,maxes)}${renderComboReport(c.nums)}<div class="combo-btn-row" style="margin-top:8px"><button onclick="saveRecommendedCombo('${c.nums.join(',')}','${c.grade}',${c.trust})">저장</button><button onclick="analyzeSavedCombo('${c.nums.join(',')}')">적중분석</button></div></section>`).join('')}${window.ScoreOptimizerPreview?window.ScoreOptimizerPreview.shell():''}</div>`;
   }catch(e){console.error('v1.7 Premium 랭킹 표시 오류',e);return `<div class="combo-card" style="background:#fff7e6"><b>AI 랭킹 안정화 모드</b><p class="combo-guide">랭킹 표시 중 오류가 발생했습니다. 입력번호와 출현이력은 계속 표시됩니다.</p></div>`}
 }
 (function bindV170Accordion(){
@@ -54,3 +54,198 @@ function renderRankedCombos(data){
     panel.classList.toggle('is-open',!open);
   });
 })();
+
+/* =========================================================
+   AI Score 번호교체 최적해 Preview v1.0
+   - 기존 엔진/점수 산식 변경 없음
+   - 1개 교체는 전체 탐색, 2~3개 교체는 단계형 후보 탐색
+========================================================= */
+(function scoreOptimizerPreview(global){
+  'use strict';
+  if(global.ScoreOptimizerPreview)return;
+
+  const state={running:false,target:70,maxReplace:3,last:null,cache:new Map()};
+  const clamp=n=>Math.max(0,Math.min(100,Math.round(Number(n)||0)));
+  const clean=nums=>[...new Set((nums||[]).map(Number).filter(n=>n>=1&&n<=45))].sort((a,b)=>a-b);
+  const keyOf=nums=>clean(nums).join(',');
+  const sleep=()=>new Promise(resolve=>setTimeout(resolve,0));
+
+  function selected(){
+    try{return clean(selectedNums);}catch(e){return [];}
+  }
+  function companionData(){
+    try{return global.CompanionEngine?global.CompanionEngine.analyze():companionAnalysis();}
+    catch(e){return {rows:[],top:[],recommend:[],counts:{},max:1};}
+  }
+  function evaluate(nums,data,target){
+    const normalized=clean(nums), key=keyOf(normalized);
+    const cacheKey=`${target}|${key}`;
+    if(state.cache.has(cacheKey))return state.cache.get(cacheKey);
+    let consensus=null;
+    try{consensus=global.ConsensusEngine&&global.ConsensusEngine.scoreCombo(normalized,data);}catch(e){console.warn('Optimizer consensus score error',e);}
+    const details=(consensus&&Array.isArray(consensus.details)?consensus.details:normalized.map(n=>({number:n,score:0,supporters:[]})))
+      .map(x=>({number:Number(x.number),score:clamp(x.score),supporters:x.supporters||[]}))
+      .sort((a,b)=>a.number-b.number);
+    const scores=details.map(x=>x.score);
+    const result={
+      nums:normalized,
+      details,
+      min:scores.length?Math.min(...scores):0,
+      avg:scores.length?Math.round(scores.reduce((a,b)=>a+b,0)/scores.length):0,
+      combo:clamp(consensus&&consensus.score),
+      failures:scores.filter(x=>x<target).length,
+      targetMet:scores.length===6&&scores.every(x=>x>=target),
+      consensus
+    };
+    state.cache.set(cacheKey,result);
+    return result;
+  }
+  function compare(a,b){
+    return a.failures-b.failures || b.min-a.min || b.avg-a.avg || b.combo-a.combo || a.replaceCount-b.replaceCount || keyOf(a.nums).localeCompare(keyOf(b.nums));
+  }
+  function sameOptimal(a,b){
+    return !!a&&!!b&&a.failures===b.failures&&a.min===b.min&&a.avg===b.avg&&a.combo===b.combo&&a.replaceCount===b.replaceCount;
+  }
+  function diff(base,next){
+    return {out:base.filter(n=>!next.includes(n)),in:next.filter(n=>!base.includes(n))};
+  }
+  function candidateAdds(base,data,stageOne){
+    const pool=[];
+    ((data&&data.top)||[]).forEach(x=>pool.push(Number(x.n)));
+    (stageOne||[]).slice(0,60).forEach(x=>diff(base,x.nums).in.forEach(n=>pool.push(n)));
+    for(let n=1;n<=45;n++)pool.push(n);
+    return [...new Set(pool)].filter(n=>!base.includes(n)&&n>=1&&n<=45);
+  }
+  function decorate(base,entry,replaceCount){
+    const d=diff(base,entry.nums);
+    return {...entry,replaceCount,out:d.out,in:d.in};
+  }
+  async function exhaustiveOne(base,data,target,onProgress){
+    const out=[];let done=0,total=base.length*(45-base.length);
+    for(const remove of base){
+      for(let add=1;add<=45;add++){
+        if(base.includes(add))continue;
+        const nums=clean([...base.filter(n=>n!==remove),add]);
+        out.push(decorate(base,evaluate(nums,data,target),1));
+        done++;
+        if(done%24===0){onProgress(`1개 교체 탐색 ${done}/${total}`);await sleep();}
+      }
+    }
+    return out.sort(compare);
+  }
+  async function expandStage(base,seeds,adds,data,target,replaceCount,onProgress){
+    const map=new Map();let done=0;
+    const seedLimit=replaceCount===2?36:42;
+    const addLimit=replaceCount===2?16:12;
+    const chosenAdds=adds.slice(0,addLimit);
+    for(const seed of seeds.slice(0,seedLimit)){
+      const removable=base.filter(n=>seed.nums.includes(n));
+      for(const remove of removable){
+        for(const add of chosenAdds){
+          if(seed.nums.includes(add))continue;
+          const nums=clean([...seed.nums.filter(n=>n!==remove),add]);
+          if(nums.length!==6||diff(base,nums).out.length!==replaceCount)continue;
+          const k=keyOf(nums);
+          if(!map.has(k))map.set(k,decorate(base,evaluate(nums,data,target),replaceCount));
+          done++;
+          if(done%30===0){onProgress(`${replaceCount}개 교체 탐색 ${map.size}개 후보`);await sleep();}
+        }
+      }
+    }
+    return [...map.values()].sort(compare);
+  }
+  function bestSet(results){
+    if(!results.length)return {best:null,ties:[]};
+    const sorted=[...results].sort(compare),best=sorted[0];
+    return {best,ties:sorted.filter(x=>sameOptimal(x,best)).slice(0,10),tieCount:sorted.filter(x=>sameOptimal(x,best)).length};
+  }
+  function setProgress(text,error=false){
+    const el=document.getElementById('scoreOptimizerResult');
+    if(el)el.innerHTML=`<div class="score-opt-progress ${error?'is-error':''}">${text}</div>`;
+  }
+  function scoreBalls(item,target){
+    return item.details.map(x=>`<div class="score-opt-number ${x.score>=target?'pass':'fail'}">${ball(x.number,true)}<b>${x.score}</b></div>`).join('');
+  }
+  function changesHtml(item){
+    return item.out.map((n,i)=>`<span>${ball(n,true)} <i>→</i> ${item.in[i]!=null?ball(item.in[i],true):''}</span>`).join('');
+  }
+  function resultCard(payload){
+    const {base,target,maxReplace,original,chosen,ties,tieCount,stages}=payload;
+    const success=chosen.targetMet;
+    const stageRows=stages.map(s=>`<div><span>${s.replaceCount}개 교체</span><b>${s.best?`${s.best.min}점 · ${s.best.targetMet?'달성':'미달'}`:'후보 없음'}</b></div>`).join('');
+    const tiesHtml=ties.length>1?`<details class="score-opt-ties"><summary>공동 최적해 ${tieCount}개 ${tieCount>10?'· 상위 10개 표시':''}</summary>${ties.map((x,i)=>`<section><b>${i+1}안 · 최저 ${x.min} · 평균 ${x.avg}</b><div class="combo-selected">${x.nums.map(n=>ball(n,true,base.includes(n)?'selected-ball':'')).join('')}</div><div class="score-opt-change">${changesHtml(x)}</div><button type="button" data-opt-apply="${x.nums.join(',')}">이 번호 적용</button></section>`).join('')}</details>`:'';
+    return `<div class="score-opt-result ${success?'is-success':'is-best'}">
+      <div class="score-opt-result-head"><b>${success?'✅ 목표 달성 최적해':'🔎 최고 가능한 탐색 결과'}</b><span>${chosen.replaceCount}개 교체</span></div>
+      <p class="combo-guide">${success?`${target}점 이상을 만족하는 가장 적은 교체 수의 결과입니다.`:`최대 ${maxReplace}개 교체 범위에서 모든 번호가 ${target}점 이상인 조합을 찾지 못했습니다.`}</p>
+      <div class="score-opt-stage">${stageRows}</div>
+      <div class="score-opt-label">현재 조합 · 최저 ${original.min}점 · 평균 ${original.avg}점</div>
+      <div class="score-opt-scoreballs">${scoreBalls(original,target)}</div>
+      <div class="score-opt-change">${changesHtml(chosen)}</div>
+      <div class="score-opt-label">대표 최적해 · 최저 ${chosen.min}점 · 평균 ${chosen.avg}점 · 합의 ${chosen.combo}점</div>
+      <div class="score-opt-scoreballs">${scoreBalls(chosen,target)}</div>
+      <div class="combo-selected score-opt-final">${chosen.nums.map(n=>ball(n,true,base.includes(n)?'selected-ball':'')).join('')}</div>
+      <button type="button" class="combo-btn score-opt-apply" data-opt-apply="${chosen.nums.join(',')}">대표 최적해 적용</button>
+      ${tiesHtml}
+      <p class="combo-guide score-opt-note">※ 번호별 점수는 Consensus AI의 현재 분석 합의점수이며 당첨 확률이 아닙니다. 1개 교체는 전체 탐색, 2~3개 교체는 iPhone 성능을 고려한 단계형 후보 탐색입니다.</p>
+    </div>`;
+  }
+  async function run(){
+    if(state.running)return;
+    const base=selected();
+    if(base.length!==6){setProgress('최적해 번호교체는 번호 6개를 입력한 경우에 사용할 수 있습니다.',true);return;}
+    const target=Number(document.getElementById('scoreOptTarget')?.value||70);
+    const maxReplace=Number(document.getElementById('scoreOptMax')?.value||3);
+    state.running=true;state.target=target;state.maxReplace=maxReplace;state.cache.clear();
+    const btn=document.getElementById('scoreOptimizerRun');if(btn){btn.disabled=true;btn.textContent='탐색 중...';}
+    try{
+      const data=companionData();
+      const original={...evaluate(base,data,target),replaceCount:0,out:[],in:[]};
+      setProgress('1개 교체 후보를 전체 탐색하고 있습니다...');
+      const one=await exhaustiveOne(base,data,target,setProgress);
+      const stages=[{replaceCount:1,...bestSet(one)}];
+      let chosenPool=one,met=one.filter(x=>x.targetMet);
+      if(!met.length&&maxReplace>=2){
+        const adds=candidateAdds(base,data,one);
+        setProgress('2개 교체 후보를 단계형으로 탐색하고 있습니다...');
+        const two=await expandStage(base,one,adds,data,target,2,setProgress);
+        stages.push({replaceCount:2,...bestSet(two)});chosenPool=two;met=two.filter(x=>x.targetMet);
+        if(!met.length&&maxReplace>=3){
+          setProgress('3개 교체 후보를 단계형으로 탐색하고 있습니다...');
+          const three=await expandStage(base,two,adds,data,target,3,setProgress);
+          stages.push({replaceCount:3,...bestSet(three)});chosenPool=three;met=three.filter(x=>x.targetMet);
+        }
+      }
+      const finalPool=met.length?met:stages.flatMap(s=>s.best?[s.best]:[]);
+      const optimum=bestSet(finalPool);
+      if(!optimum.best)throw new Error('유효한 교체 후보를 만들지 못했습니다.');
+      const payload={base,target,maxReplace,original,chosen:optimum.best,ties:optimum.ties,tieCount:optimum.tieCount||1,stages};
+      state.last=payload;
+      const el=document.getElementById('scoreOptimizerResult');if(el)el.innerHTML=resultCard(payload);
+    }catch(e){console.error('Score Optimizer error',e);setProgress(`최적해 탐색 중 오류가 발생했습니다: ${e.message||e}`,true);}
+    finally{state.running=false;if(btn){btn.disabled=false;btn.textContent='최적해 번호교체 실행';}}
+  }
+  function apply(numsText){
+    const nums=clean(String(numsText||'').split(',')).slice(0,6);
+    if(nums.length!==6)return;
+    const input=document.getElementById('comboInput');if(input)input.value=nums.join(' ');
+    const analyze=document.getElementById('analyzeBtn');if(analyze)analyze.click();
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+  function shell(){
+    const base=selected();
+    return `<section class="score-optimizer-card" id="scoreOptimizerCard">
+      <div class="score-opt-title"><b>🧩 AI Score 최적해 번호교체</b><span>Preview</span></div>
+      <p class="combo-guide">현재 6개 번호를 유지하면서 1개 교체부터 시작해 필요하면 최대 3개까지 탐색합니다.</p>
+      <div class="score-opt-controls"><label>목표점수<select id="scoreOptTarget"><option value="60">60점 이상</option><option value="70" selected>70점 이상</option><option value="80">80점 이상</option></select></label><label>최대 교체<select id="scoreOptMax"><option value="1">1개</option><option value="2">2개</option><option value="3" selected>3개</option></select></label></div>
+      <button type="button" id="scoreOptimizerRun" class="combo-btn" ${base.length===6?'':'disabled'}>최적해 번호교체 실행</button>
+      <div id="scoreOptimizerResult">${base.length===6?'<p class="combo-guide">실행하면 대표 최적해와 공동 최적해를 표시합니다.</p>':'<p class="combo-guide">번호 6개를 입력한 뒤 사용할 수 있습니다.</p>'}</div>
+    </section>`;
+  }
+
+  document.addEventListener('click',e=>{
+    if(e.target.closest('#scoreOptimizerRun'))run();
+    const applyBtn=e.target.closest('[data-opt-apply]');
+    if(applyBtn)apply(applyBtn.getAttribute('data-opt-apply'));
+  });
+  global.ScoreOptimizerPreview=Object.freeze({run,apply,shell,getState:()=>({...state})});
+})(window);
