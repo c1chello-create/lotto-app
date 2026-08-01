@@ -1,7 +1,8 @@
 (function(global){
   'use strict';
 
-  const state={size:2,scope:'all',includeBonus:true,sort:'count',limit:100,last:[]};
+  const defaults={2:3,3:2,4:2};
+  const state={size:2,scope:'all',includeBonus:true,sort:'count',minCount:3,limit:100,last:[]};
   const cleanNums=arr=>[...new Set((arr||[]).map(Number).filter(n=>n>=1&&n<=45))].sort((a,b)=>a-b);
   const keyOf=nums=>cleanNums(nums).join(',');
   const rows=()=>{
@@ -30,7 +31,9 @@
     return cleanNums(nums);
   }
   function aggregate(opts={}){
-    const size=Number(opts.size||state.size), includeBonus=opts.includeBonus??state.includeBonus;
+    const size=Number(opts.size||state.size);
+    const includeBonus=opts.includeBonus??state.includeBonus;
+    const minCount=Number(opts.minCount??state.minCount??1);
     const map=new Map();
     scopedRows(opts.scope||state.scope).forEach(row=>{
       choose(pool(row,includeBonus),size).forEach(nums=>{
@@ -43,7 +46,7 @@
         }
       });
     });
-    const list=[...map.values()];
+    const list=[...map.values()].filter(x=>x.count>=minCount);
     const sort=opts.sort||state.sort;
     list.sort((a,b)=>{
       if(sort==='latest')return b.recentRound-a.recentRound||b.count-a.count||a.key.localeCompare(b.key,undefined,{numeric:true});
@@ -57,5 +60,42 @@
     const includeBonus=state.includeBonus;
     return scopedRows().filter(row=>nums.every(n=>pool(row,includeBonus).includes(n)));
   }
-  global.CompanionCombinationEngine=Object.freeze({state,aggregate,details,scopedRows,pool,choose,keyOf});
+  function bestWithCandidate(baseNums,candidate,size,opts={}){
+    const base=cleanNums(baseNums).filter(n=>n!==Number(candidate));
+    const need=Number(size)-1;
+    if(need<1||base.length<need)return null;
+    let best=null;
+    choose(base,need).forEach(parts=>{
+      const nums=cleanNums([...parts,Number(candidate)]);
+      let count=0,recentRound=0,recentDate='';
+      scopedRows(opts.scope||state.scope).forEach(row=>{
+        const p=pool(row,opts.includeBonus??state.includeBonus);
+        if(nums.every(n=>p.includes(n))){
+          count++;
+          if(Number(row.round)>recentRound){recentRound=Number(row.round);recentDate=row.date||'';}
+        }
+      });
+      const item={key:keyOf(nums),nums,count,recentRound,recentDate};
+      if(!best||item.count>best.count||(item.count===best.count&&item.recentRound>best.recentRound))best=item;
+    });
+    return best;
+  }
+  function strength(count,size){
+    const c=Number(count)||0;
+    if(size===2){if(c>=8)return'매우 강함';if(c>=5)return'강함';if(c>=3)return'보통';return'약함';}
+    if(size===3){if(c>=4)return'강함';if(c>=2)return'보통';return'약함';}
+    if(c>=3)return'강함';if(c>=2)return'보통';return'약함';
+  }
+  function recommendationPatterns(baseNums,recommendations,opts={}){
+    return cleanNums(recommendations).map(candidate=>{
+      const two=bestWithCandidate(baseNums,candidate,2,opts);
+      const three=bestWithCandidate(baseNums,candidate,3,opts);
+      const four=bestWithCandidate(baseNums,candidate,4,opts);
+      return {candidate,two,three,four,strength2:strength(two?.count||0,2)};
+    });
+  }
+  global.CompanionCombinationEngine=Object.freeze({
+    state,defaults,aggregate,details,scopedRows,pool,choose,keyOf,
+    bestWithCandidate,recommendationPatterns,strength
+  });
 })(window);
