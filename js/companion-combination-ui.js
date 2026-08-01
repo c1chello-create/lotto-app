@@ -5,6 +5,7 @@
   const cls=n=>n<=9?'yellow':n<=19?'blue':n<=29?'red':n<=39?'black':'green';
   const ball=n=>`<span class="ball small-ball ${cls(Number(n))}">${n}</span>`;
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
   function shell(){
     return `<section class="combo-card companion-combo-lab">
       <div class="ccl-title"><div><b>🔗 동반출현 조합</b><p>2개·3개·4개 번호가 함께 나온 과거 패턴을 집계합니다.</p></div><span>전체 통계</span></div>
@@ -14,6 +15,7 @@
       <div class="ccl-controls">
         <label>분석 범위<select id="cclScope"><option value="50">최근 50회</option><option value="100">최근 100회</option><option value="all" selected>전체</option></select></label>
         <label>정렬<select id="cclSort"><option value="count">출현횟수순</option><option value="latest">최근회차순</option><option value="number">번호순</option></select></label>
+        <label>최소 출현<select id="cclMinCount"><option value="1">전체</option><option value="2">2회+</option><option value="3" selected>3회+</option><option value="5">5회+</option></select></label>
       </div>
       <label class="checkline ccl-bonus"><input id="cclBonus" type="checkbox" checked> 보너스 번호 포함</label>
       <div class="ccl-summary" id="cclSummary">데이터를 준비하고 있습니다.</div>
@@ -37,7 +39,7 @@
     const eng=E();if(!eng)return;
     const data=eng.aggregate();
     const shown=data.slice(0,eng.state.limit);
-    $('cclSummary').innerHTML=`<b>${eng.state.size}개 조합 ${data.length.toLocaleString()}개</b><span>${eng.state.scope==='all'?'전체':`최근 ${eng.state.scope}회`} · 보너스 ${eng.state.includeBonus?'포함':'제외'}</span>`;
+    $('cclSummary').innerHTML=`<b>${eng.state.size}개 조합 ${data.length.toLocaleString()}개</b><span>${eng.state.scope==='all'?'전체':`최근 ${eng.state.scope}회`} · ${eng.state.minCount===1?'전체 출현':eng.state.minCount+'회 이상'} · 보너스 ${eng.state.includeBonus?'포함':'제외'}</span>`;
     $('cclList').innerHTML=shown.length?shown.map(item=>`<button class="ccl-row" type="button" data-ccl-key="${item.key}">
       <span class="ccl-balls">${item.nums.map(ball).join('')}</span><strong>${item.count}회</strong><span>${item.recentRound}회</span><span>${esc(item.recentDate)}</span>
     </button>`).join(''):`<div class="ccl-empty">해당 조건의 조합이 없습니다.</div>`;
@@ -56,20 +58,83 @@
     </section>`;
     wrap.classList.add('open');document.body.classList.add('ccl-lock');
   }
+  function openRecommendationDetail(){
+    const box=$('aiCompanionPatternBox');if(!box)return;
+    const first=box.querySelector('[data-rec-pattern-key]');
+    if(first)openDetail(first.dataset.recPatternKey);
+  }
   function close(){const m=$('cclModal');if(m)m.classList.remove('open');document.body.classList.remove('ccl-lock');}
   function bind(){
     document.addEventListener('click',e=>{
       const size=e.target.closest('[data-ccl-size]');
-      if(size){document.querySelectorAll('[data-ccl-size]').forEach(b=>b.classList.toggle('active',b===size));E().state.size=Number(size.dataset.cclSize);E().state.limit=100;render();}
+      if(size){
+        document.querySelectorAll('[data-ccl-size]').forEach(b=>b.classList.toggle('active',b===size));
+        const n=Number(size.dataset.cclSize);E().state.size=n;E().state.minCount=E().defaults[n];E().state.limit=100;
+        if($('cclMinCount'))$('cclMinCount').value=String(E().state.minCount);
+        render();
+      }
       const row=e.target.closest('[data-ccl-key]');if(row)openDetail(row.dataset.cclKey);
+      const pat=e.target.closest('[data-rec-pattern-key]');if(pat)openDetail(pat.dataset.recPatternKey);
       if(e.target.closest('[data-ccl-close]'))close();
       if(e.target.closest('#cclMore')){E().state.limit+=100;render();}
     });
-    $('cclScope').addEventListener('change',e=>{E().state.scope=e.target.value;E().state.limit=100;render();});
+    $('cclScope').addEventListener('change',e=>{E().state.scope=e.target.value;E().state.limit=100;render();refreshRecommendationSummary();});
     $('cclSort').addEventListener('change',e=>{E().state.sort=e.target.value;render();});
-    $('cclBonus').addEventListener('change',e=>{E().state.includeBonus=e.target.checked;E().state.limit=100;render();});
+    $('cclMinCount').addEventListener('change',e=>{E().state.minCount=Number(e.target.value);E().state.limit=100;render();});
+    $('cclBonus').addEventListener('change',e=>{E().state.includeBonus=e.target.checked;E().state.limit=100;render();refreshRecommendationSummary();});
   }
-  function wait(){ensure();if((global.LOTTO_DATA||[]).length)render();else setTimeout(wait,250);}
+
+  function currentSelection(){
+    const raw=($('comboInput')?.value||'').trim();
+    return [...new Set(raw.split(/[\s,]+/).map(Number).filter(n=>Number.isInteger(n)&&n>=1&&n<=45))].sort((a,b)=>a-b);
+  }
+  function currentRecommendations(){
+    try{
+      if(typeof global.companionAnalysis==='function')return global.companionAnalysis().recommend||[];
+    }catch(e){}
+    return [];
+  }
+  function summaryHtml(){
+    const eng=E(),base=currentSelection(),recs=currentRecommendations();
+    if(!eng||base.length<2||!recs.length)return'';
+    const items=eng.recommendationPatterns(base,recs,{scope:eng.state.scope,includeBonus:eng.state.includeBonus});
+    return `<div id="aiCompanionPatternBox" class="ai-companion-pattern">
+      <div class="acp-list">${items.map(x=>`<button type="button" class="acp-row" data-rec-pattern-key="${x.two?.key||''}">
+        <span>${ball(x.candidate)}<b>${x.candidate}번</b></span>
+        <em>2조합 ${x.strength2} · 3조합 ${x.three?.count||0}회</em>
+      </button>`).join('')}</div>
+      <button type="button" class="acp-detail-btn" id="acpDetailBtn">동반 패턴 자세히 보기</button>
+      <p>표시용 참고 통계이며 현재 AI Score와 추천 순위에는 반영되지 않습니다.</p>
+    </div>`;
+  }
+  function refreshRecommendationSummary(){
+    const card=[...document.querySelectorAll('#companion .combo-card')].find(x=>x.textContent.includes('AI 추천 동반번호'));
+    if(!card)return;
+    card.querySelector('#aiCompanionPatternBox')?.remove();
+    const html=summaryHtml();
+    if(html)card.insertAdjacentHTML('beforeend',html);
+    const btn=$('acpDetailBtn');
+    if(btn)btn.onclick=()=>{
+      const rows=[...document.querySelectorAll('[data-rec-pattern-key]')].filter(x=>x.dataset.recPatternKey);
+      if(rows[0])openDetail(rows[0].dataset.recPatternKey);
+    };
+  }
+  function patchRenderCompanion(){
+    if(global.__CCL_RENDER_PATCHED__)return;
+    const original=global.renderCompanion;
+    if(typeof original!=='function'){setTimeout(patchRenderCompanion,100);return;}
+    global.renderCompanion=function(){
+      const result=original.apply(this,arguments);
+      setTimeout(refreshRecommendationSummary,0);
+      return result;
+    };
+    global.__CCL_RENDER_PATCHED__=true;
+  }
+  function wait(){
+    ensure();patchRenderCompanion();
+    if((global.LOTTO_DATA||[]).length){render();refreshRecommendationSummary();}
+    else setTimeout(wait,250);
+  }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wait);else wait();
-  global.CompanionCombinationUI=Object.freeze({render,openDetail,close});
+  global.CompanionCombinationUI=Object.freeze({render,openDetail,close,refreshRecommendationSummary});
 })(window);
