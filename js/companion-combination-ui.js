@@ -58,10 +58,29 @@
     </section>`;
     wrap.classList.add('open');document.body.classList.add('ccl-lock');
   }
+  function patternLine(label,item){
+    if(!item||!item.key)return `<div class="acp-overview-line is-empty"><span>${label}</span><em>해당 조합 없음</em></div>`;
+    return `<button type="button" class="acp-overview-line" data-ccl-key="${item.key}"><span>${label}</span><b>${item.nums.join('·')}</b><em>${item.count}회</em></button>`;
+  }
   function openRecommendationDetail(){
-    const box=$('aiCompanionPatternBox');if(!box)return;
-    const first=box.querySelector('[data-rec-pattern-key]');
-    if(first)openDetail(first.dataset.recPatternKey);
+    const eng=E(),base=currentSelection(),recs=currentRecommendations();
+    if(!eng||base.length<2||!recs.length)return;
+    const items=eng.recommendationPatterns(base,recs,{scope:eng.state.scope,includeBonus:eng.state.includeBonus});
+    let wrap=$('cclModal');
+    if(!wrap){wrap=document.createElement('div');wrap.id='cclModal';wrap.className='ccl-modal';document.body.appendChild(wrap);}
+    wrap.innerHTML=`<div class="ccl-backdrop" data-ccl-close></div><section class="ccl-sheet acp-overview-sheet" role="dialog" aria-modal="true">
+      <div class="ccl-handle"></div>
+      <div class="ccl-sheet-head"><div><b>추천번호별 동반 패턴</b><p>${eng.state.scope==='all'?'전체':`최근 ${eng.state.scope}회`} · 보너스 ${eng.state.includeBonus?'포함':'제외'}</p></div><button type="button" data-ccl-close>✕</button></div>
+      <div class="acp-overview-list">${items.map(x=>`<section class="acp-overview-card">
+        <div class="acp-overview-title">${ball(x.candidate)}<b>${x.candidate}번</b></div>
+        ${patternLine('2조합 최고',x.two)}
+        ${patternLine('3조합 최고',x.three)}
+        ${patternLine('4조합 최고',x.four)}
+      </section>`).join('')}</div>
+      <p class="acp-overview-note">각 조합을 누르면 실제 함께 출현한 회차를 확인할 수 있습니다. 이 통계는 현재 AI Score와 추천 순위에는 반영되지 않습니다.</p>
+      <button class="ccl-close-bottom" type="button" data-ccl-close>닫기</button>
+    </section>`;
+    wrap.classList.add('open');document.body.classList.add('ccl-lock');
   }
   function close(){const m=$('cclModal');if(m)m.classList.remove('open');document.body.classList.remove('ccl-lock');}
   function bind(){
@@ -74,7 +93,6 @@
         render();
       }
       const row=e.target.closest('[data-ccl-key]');if(row)openDetail(row.dataset.cclKey);
-      const pat=e.target.closest('[data-rec-pattern-key]');if(pat)openDetail(pat.dataset.recPatternKey);
       if(e.target.closest('[data-ccl-close]'))close();
       if(e.target.closest('#cclMore')){E().state.limit+=100;render();}
     });
@@ -99,7 +117,7 @@
     if(!eng||base.length<2||!recs.length)return'';
     const items=eng.recommendationPatterns(base,recs,{scope:eng.state.scope,includeBonus:eng.state.includeBonus});
     return `<div id="aiCompanionPatternBox" class="ai-companion-pattern">
-      <div class="acp-list">${items.map(x=>`<button type="button" class="acp-row" data-rec-pattern-key="${x.two?.key||''}">
+      <div class="acp-list">${items.map(x=>`<button type="button" class="acp-row">
         <span>${ball(x.candidate)}<b>${x.candidate}번</b></span>
         <em>2조합 ${x.strength2} · 3조합 ${x.three?.count||0}회</em>
       </button>`).join('')}</div>
@@ -114,10 +132,7 @@
     const html=summaryHtml();
     if(html)card.insertAdjacentHTML('beforeend',html);
     const btn=$('acpDetailBtn');
-    if(btn)btn.onclick=()=>{
-      const rows=[...document.querySelectorAll('[data-rec-pattern-key]')].filter(x=>x.dataset.recPatternKey);
-      if(rows[0])openDetail(rows[0].dataset.recPatternKey);
-    };
+    if(btn)btn.onclick=openRecommendationDetail;
   }
   function patchRenderCompanion(){
     if(global.__CCL_RENDER_PATCHED__)return;
