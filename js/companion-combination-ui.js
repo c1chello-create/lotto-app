@@ -169,10 +169,10 @@
 
   function optimizerShell(){
     return `<section id="companionPatternOptimizer" class="companion-pattern-optimizer">
-      <div class="cpo-head"><div><b>🧩 Companion Pattern Optimizer</b><p>현재 번호를 최대한 유지하면서 Pattern Score가 높은 조합을 탐색합니다.</p></div><span>v1.9.2</span></div>
+      <div class="cpo-head"><div><b>🧩 Companion Pattern Optimizer</b><p>기존 AI와 반복기반 Companion 점수를 함께 사용해 신뢰도가 높은 조합을 탐색합니다.</p></div><span>v1.9.3</span></div>
       <div class="cpo-controls">
         <label>최대 교체<select id="cpoMaxReplace"><option value="1">1개</option><option value="2">2개</option><option value="3" selected>3개</option></select></label>
-        <button type="button" id="cpoRun">패턴 최적화 실행</button>
+        <button type="button" id="cpoRun">AI·Companion 최적화 실행</button>
       </div>
       <div id="cpoResult" class="cpo-result"><p>번호 6개를 분석한 뒤 실행할 수 있습니다.</p></div>
     </section>`;
@@ -182,20 +182,36 @@
     if(!patternBox||$('companionPatternOptimizer'))return;
     patternBox.insertAdjacentHTML('afterend',optimizerShell());
     $('cpoRun')?.addEventListener('click',runOptimizer);
+    ensureBacktest();
   }
   function scoreCard(title,item,isBest){
     if(!item)return'';
     const p=item.pattern||item;
+    const linked=Number(item.aiLinked||0);
+    const classic=Number(item.classic?.score||0);
     return `<section class="cpo-score-card ${isBest?'is-best':''}">
-      <div class="cpo-score-head"><b>${title}</b><span>${p.grade.grade}등급 · ${p.score}점</span></div>
+      <div class="cpo-score-head"><b>${title}</b><span>${p.grade.grade}등급 · 보정 ${p.adjusted}점</span></div>
       <div class="cpo-balls">${p.nums.map(ball).join('')}</div>
-      <div class="cpo-parts"><span>2조합 ${p.pair.avg}</span><span>3조합 ${p.triple.avg}</span><span>4조합 ${p.quad.avg}</span><span>최근성 ${p.recent}</span></div>
+      <div class="cpo-phase3-summary">
+        <span><b>${p.strength}</b>Pattern Strength</span>
+        <span><b>${p.confidence}%</b>Confidence</span>
+        <span><b>${classic||'-'}</b>기존 AI</span>
+        <span><b>${linked||'-'}</b>AI 연동</span>
+      </div>
+      <div class="cpo-parts">
+        <span>패턴성 ${p.components.pattern}</span><span>재현성 ${p.components.reproduction}</span>
+        <span>번호군 ${p.components.group}</span><span>흐름성 ${p.components.flow}</span>
+      </div>
+      <div class="cpo-confidence-parts">
+        <span>표본 ${p.confidenceParts.sample}</span><span>하위반복 ${p.confidenceParts.lowerRepeat}</span>
+        <span>시간분산 ${p.confidenceParts.timeSpread}</span><span>최근·전체 ${p.confidenceParts.consistency}</span>
+      </div>
     </section>`;
   }
   function runOptimizer(){
     const eng=E(),result=$('cpoResult'),base=currentSelection();
     if(!eng||base.length!==6){result.innerHTML='<div class="cpo-warning">분석번호 6개를 입력해 주세요.</div>';return;}
-    const btn=$('cpoRun');btn.disabled=true;btn.textContent='탐색 중...';
+    const btn=$('cpoRun');btn.disabled=true;btn.textContent='AI·Companion 연동 탐색 중...';
     setTimeout(()=>{
       try{
         const data=eng.optimizePattern(base,{
@@ -204,17 +220,57 @@
           includeBonus:eng.state.includeBonus
         });
         if(data.error){result.innerHTML=`<div class="cpo-warning">${data.error}</div>`;return;}
-        if(!data.best){result.innerHTML=scoreCard('현재 조합',data.current,false)+'<p class="cpo-note">더 높은 Pattern Score 조합을 찾지 못했습니다.</p>';return;}
+        if(!data.best){
+          result.innerHTML=scoreCard('현재 조합',data.current,false)+'<p class="cpo-note">AI 연동점수가 더 높은 조합을 찾지 못했습니다.</p>';
+          return;
+        }
         const removed=data.best.removed.join('·'),added=data.best.added.join('·');
+        const delta=data.best.aiLinked-data.current.aiLinked;
         result.innerHTML=`
+          <div class="cpo-link-formula">
+            <b>Phase 3 AI 연동</b>
+            <span>기존 AI 70% + Confidence 보정 Companion 30%</span>
+          </div>
           <div class="cpo-compare">${scoreCard('현재 조합',data.current,false)}<div class="cpo-arrow">↓</div>${scoreCard('대표 최적해',data.best,true)}</div>
-          <div class="cpo-change">교체 ${removed||'-'} → ${added||'-'} · <strong>+${data.best.pattern.score-data.current.score}점</strong></div>
+          <div class="cpo-change">교체 ${removed||'-'} → ${added||'-'} · <strong>AI 연동 ${delta>=0?'+':''}${delta}점</strong></div>
           <div class="cpo-reasons"><b>AI 추천 이유</b>${data.reasons.map(x=>`<p>✓ ${x}</p>`).join('')}</div>
           <button type="button" class="cpo-apply" data-cpo-apply="${data.best.nums.join(',')}">대표 최적해 적용</button>
-          ${data.coOptimal.length>1?`<div class="cpo-co"><b>공동 최적해 ${data.coOptimal.length}개</b>${data.coOptimal.map((x,i)=>`<button type="button" data-cpo-apply="${x.nums.join(',')}"><span>${i+1}</span>${x.nums.map(ball).join('')}<em>${x.pattern.grade.grade} · ${x.pattern.score}점</em></button>`).join('')}</div>`:''}
-          <p class="cpo-note">총 ${data.tested.toLocaleString()}개 후보를 단계형 탐색했습니다. Pattern Score는 과거 패턴 강도 지수이며 당첨 확률이 아닙니다.</p>`;
-      }finally{btn.disabled=false;btn.textContent='패턴 최적화 실행';}
+          ${data.coOptimal.length>1?`<div class="cpo-co"><b>공동 최적해 ${data.coOptimal.length}개</b>${data.coOptimal.map((x,i)=>`<button type="button" data-cpo-apply="${x.nums.join(',')}"><span>${i+1}</span>${x.nums.map(ball).join('')}<em>AI ${x.aiLinked} · P ${x.pattern.adjusted} · C ${x.pattern.confidence}%</em></button>`).join('')}</div>`:''}
+          <p class="cpo-note">총 ${data.tested.toLocaleString()}개 후보를 단계형 탐색했습니다. 점수는 과거 데이터 기반 비교지수이며 당첨 확률이 아닙니다.</p>`;
+      }finally{btn.disabled=false;btn.textContent='AI·Companion 최적화 실행';}
     },30);
+  }
+  function backtestShell(){
+    return `<section class="companion-backtest" id="companionBacktest">
+      <div class="cbt-head"><div><b>🧪 Phase 3 워크포워드 백테스트</b><p>미래 회차를 보지 않고 이전 데이터만 사용해 신호 분별력을 점검합니다.</p></div><span>Validation</span></div>
+      <button type="button" id="cbtRun">최근 50회 백테스트 실행</button>
+      <div id="cbtResult" class="cbt-result"><p>실행하면 평균 백분위·상위 25% 진입률·고신뢰 구간 성능을 표시합니다.</p></div>
+    </section>`;
+  }
+  function ensureBacktest(){
+    const opt=$('companionPatternOptimizer');
+    if(!opt||$('companionBacktest'))return;
+    opt.insertAdjacentHTML('afterend',backtestShell());
+    $('cbtRun')?.addEventListener('click',runBacktest);
+  }
+  function runBacktest(){
+    const eng=E(),btn=$('cbtRun'),box=$('cbtResult');
+    if(!eng?.backtestPhase3)return;
+    btn.disabled=true;btn.textContent='백테스트 계산 중...';
+    setTimeout(()=>{
+      try{
+        const r=eng.backtestPhase3({testCount:50,includeBonus:eng.state.includeBonus});
+        box.innerHTML=`<div class="cbt-verdict"><b>${r.verdict}</b><span>${r.count}개 회차 검증</span></div>
+          <div class="cbt-grid">
+            <span><b>${r.avgPercentile}</b>평균 백분위</span>
+            <span><b>${r.top25}%</b>상위 25%</span>
+            <span><b>${r.top50}%</b>상위 50%</span>
+            <span><b>${r.highTop25}%</b>고신뢰 상위25%</span>
+          </div>
+          <p>${r.note}</p>
+          <details><summary>최근 검증 회차 보기</summary>${r.records.map(x=>`<div>${x.round}회 · 점수 ${x.score} · 신뢰 ${x.confidence}% · 백분위 ${x.percentile}</div>`).join('')}</details>`;
+      }finally{btn.disabled=false;btn.textContent='최근 50회 백테스트 다시 실행';}
+    },40);
   }
   function patchRenderCompanion(){
     if(global.__CCL_RENDER_PATCHED__)return;
