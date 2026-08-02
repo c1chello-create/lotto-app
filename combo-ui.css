@@ -189,3 +189,20 @@ button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
   .acp-row{align-items:flex-start}
   .acp-row em{max-width:180px}
 }
+
+
+/* Companion recommendation pattern overview v2.2 */
+.acp-overview-sheet{max-height:90vh}
+.acp-overview-list{overflow:auto;padding:12px 14px 4px;display:grid;gap:12px}
+.acp-overview-card{border:1px solid #dce8f6;border-radius:16px;background:#fbfdff;padding:12px}
+.acp-overview-title{display:flex;align-items:center;gap:8px;margin-bottom:8px;color:#12376d}
+.acp-overview-title>b{font-size:17px}
+.acp-overview-line{width:100%;display:grid;grid-template-columns:88px 1fr 46px;align-items:center;gap:8px;border:0;border-top:1px solid #e7eef7;background:transparent;padding:10px 2px;color:#172033;text-align:left}
+.acp-overview-line:first-of-type{border-top:0}
+.acp-overview-line>span{font-size:12px;font-weight:800;color:#667085}
+.acp-overview-line>b{font-size:14px;color:#12376d}
+.acp-overview-line>em{font-style:normal;text-align:right;font-size:13px;font-weight:900;color:#1769aa}
+.acp-overview-line:not(.is-empty):active{background:#eef6ff}
+.acp-overview-line.is-empty>em{grid-column:2/4;color:#98a2b3;font-weight:700;text-align:left}
+.acp-overview-note{margin:8px 16px 12px;font-size:11px;line-height:1.5;color:#7b8798}
+@media(max-width:390px){.acp-overview-line{grid-template-columns:82px 1fr 42px}.acp-overview-line>b{font-size:13px}}
