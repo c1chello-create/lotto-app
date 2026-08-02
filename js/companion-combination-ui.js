@@ -70,9 +70,12 @@
     </section>`;
     wrap.classList.add('open');document.body.classList.add('ccl-lock');
   }
-  function patternLine(label,item){
+  function patternLine(label,item,index,usage){
     if(!item||!item.key)return `<div class="acp-overview-line is-empty"><span>${label}</span><em>해당 조합 없음</em></div>`;
-    return `<button type="button" class="acp-overview-line" data-ccl-key="${item.key}"><span>${label}</span><b>${item.nums.join('·')}</b><em>${item.count}회</em></button>`;
+    const badge=usage?.used?`<i class="acp-ai-badge is-used">AI 반영${usage.bestRank?` · ${usage.bestRank}위`:''}</i>`:`<i class="acp-ai-badge">참고</i>`;
+    return `<button type="button" class="acp-overview-line" data-ccl-key="${item.key}">
+      <span>${label}</span><b>${item.nums.join('·')}</b><em>${item.count}회 · 지수 ${index}</em>${badge}
+    </button>`;
   }
   function openRecommendationDetail(){
     const eng=E(),base=currentSelection(),recs=currentRecommendations();
@@ -83,13 +86,17 @@
     wrap.innerHTML=`<div class="ccl-backdrop" data-ccl-close></div><section class="ccl-sheet acp-overview-sheet" role="dialog" aria-modal="true">
       <div class="ccl-handle"></div>
       <div class="ccl-sheet-head"><div><b>추천번호별 동반 패턴</b><p>${eng.state.scope==='all'?'전체':`최근 ${eng.state.scope}회`} · 보너스 ${eng.state.includeBonus?'포함':'제외'}</p></div><button type="button" data-ccl-close>✕</button></div>
-      <div class="acp-overview-list">${items.map(x=>`<section class="acp-overview-card">
-        <div class="acp-overview-title">${ball(x.candidate)}<b>${x.candidate}번</b></div>
-        ${patternLine('2조합 최고',x.two)}
-        ${patternLine('3조합 최고',x.three)}
-        ${patternLine('4조합 최고',x.four)}
+      <div class="acp-overview-list">${items.map((x,i)=>`<section class="acp-overview-card">
+        <div class="acp-overview-title">${ball(x.candidate)}<b>${x.candidate}번</b>
+          <span class="acp-index-pill">Companion Index ${x.index.score}</span>
+          ${i===0?'<span class="acp-best-badge">AI 추천 패턴</span>':''}
+        </div>
+        <div class="acp-index-parts">2조합 ${x.index.two} · 3조합 ${x.index.three} · 4조합 ${x.index.four} · 최근성 ${x.index.recent}</div>
+        ${patternLine('2조합 최고',x.two,x.index.two,x.aiUsage)}
+        ${patternLine('3조합 최고',x.three,x.index.three,x.aiUsage)}
+        ${patternLine('4조합 최고',x.four,x.index.four,x.aiUsage)}
       </section>`).join('')}</div>
-      <p class="acp-overview-note">각 조합을 누르면 실제 함께 출현한 회차를 확인할 수 있습니다. 이 통계는 현재 AI Score와 추천 순위에는 반영되지 않습니다.</p>
+      <p class="acp-overview-note">Companion Index는 2조합 45%·3조합 30%·4조합 15%·최근성 10%의 Preview 지수입니다. 각 조합을 누르면 실제 출현 회차를 확인할 수 있습니다. 기존 AI Score 산식은 변경하지 않았습니다.</p>
       <button class="ccl-close-bottom" type="button" data-ccl-close>닫기</button>
     </section>`;
     wrap.classList.add('open');document.body.classList.add('ccl-lock');
@@ -105,6 +112,7 @@
         render();
       }
       const row=e.target.closest('[data-ccl-key]');if(row)openDetail(row.dataset.cclKey);
+      if(e.target.closest('[data-open-rec-pattern]'))openRecommendationDetail();
       if(e.target.closest('[data-ccl-close]'))close();
       if(e.target.closest('#cclMore')){E().state.limit+=100;render();}
     });
@@ -132,12 +140,13 @@
     if(!eng||base.length<2||!recs.length)return'';
     const items=eng.recommendationPatterns(base,recs,{scope:eng.state.scope,includeBonus:eng.state.includeBonus});
     return `<div id="aiCompanionPatternBox" class="ai-companion-pattern">
-      <div class="acp-list">${items.map(x=>`<button type="button" class="acp-row">
-        <span>${ball(x.candidate)}<b>${x.candidate}번</b></span>
-        <em>2조합 ${x.strength2} · 3조합 ${x.three?.count||0}회</em>
+      <div class="acp-recommend-head"><b>Companion Pattern AI</b><span>Preview</span></div>
+      <div class="acp-list">${items.map((x,i)=>`<button type="button" class="acp-row" data-open-rec-pattern>
+        <span>${ball(x.candidate)}<b>${x.candidate}번</b>${i===0?'<i class="acp-best-mini">추천</i>':''}</span>
+        <em><strong>지수 ${x.index.score}</strong> · 2조합 ${x.strength2} · 3조합 ${x.three?.count||0}회 · ${x.aiUsage.label}</em>
       </button>`).join('')}</div>
-      <button type="button" class="acp-detail-btn" id="acpDetailBtn">동반 패턴 자세히 보기</button>
-      <p>표시용 참고 통계이며 현재 AI Score와 추천 순위에는 반영되지 않습니다.</p>
+      <button type="button" class="acp-detail-btn" id="acpDetailBtn">추천번호별 최고 2·3·4조합 보기</button>
+      <p>Companion Index와 AI 반영 배지는 설명용 Preview입니다. 기존 AI Score와 추천 순위 산식은 변경하지 않습니다.</p>
     </div>`;
   }
   function refreshRecommendationSummary(){
