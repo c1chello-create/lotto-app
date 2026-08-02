@@ -206,3 +206,14 @@ button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 .acp-overview-line.is-empty>em{grid-column:2/4;color:#98a2b3;font-weight:700;text-align:left}
 .acp-overview-note{margin:8px 16px 12px;font-size:11px;line-height:1.5;color:#7b8798}
 @media(max-width:390px){.acp-overview-line{grid-template-columns:82px 1fr 42px}.acp-overview-line>b{font-size:13px}}
+
+
+/* v2.3 선택번호 연관 조합 */
+.companion-combo-lab .ccl-balls .selected-ball{
+  outline:3px solid rgba(255,205,55,.58);
+  outline-offset:2px;
+}
+.companion-combo-lab .ccl-summary span{
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
