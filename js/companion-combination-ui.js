@@ -8,7 +8,7 @@
 
   function shell(){
     return `<section class="combo-card companion-combo-lab">
-      <div class="ccl-title"><div><b>🔗 동반출현 조합</b><p>2개·3개·4개 번호가 함께 나온 과거 패턴을 집계합니다.</p></div><span>전체 통계</span></div>
+      <div class="ccl-title"><div><b>🔗 선택번호 연관 동반조합</b><p>입력번호끼리의 조합과 입력번호에 연결된 동반번호 출현 이력만 집계합니다.</p></div><span>선택번호 기준</span></div>
       <div class="ccl-size-tabs" role="tablist">
         <button data-ccl-size="2" class="active">2개 조합</button><button data-ccl-size="3">3개 조합</button><button data-ccl-size="4">4개 조합</button>
       </div>
@@ -37,13 +37,25 @@
   }
   function render(){
     const eng=E();if(!eng)return;
-    const data=eng.aggregate();
+    const selected=currentSelection();
+    const required=eng.requiredSelectedCount(eng.state.size);
+    const data=eng.aggregate({selectedNums:selected});
     const shown=data.slice(0,eng.state.limit);
-    $('cclSummary').innerHTML=`<b>${eng.state.size}개 조합 ${data.length.toLocaleString()}개</b><span>${eng.state.scope==='all'?'전체':`최근 ${eng.state.scope}회`} · ${eng.state.minCount===1?'전체 출현':eng.state.minCount+'회 이상'} · 보너스 ${eng.state.includeBonus?'포함':'제외'}</span>`;
-    $('cclList').innerHTML=shown.length?shown.map(item=>`<button class="ccl-row" type="button" data-ccl-key="${item.key}">
-      <span class="ccl-balls">${item.nums.map(ball).join('')}</span><strong>${item.count}회</strong><span>${item.recentRound}회</span><span>${esc(item.recentDate)}</span>
-    </button>`).join(''):`<div class="ccl-empty">해당 조건의 조합이 없습니다.</div>`;
-    const more=$('cclMore');more.hidden=data.length<=eng.state.limit;more.textContent=`더 보기 (${eng.state.limit}/${data.length})`;
+    const summary=$('cclSummary'),list=$('cclList'),more=$('cclMore');
+
+    if(selected.length<required){
+      summary.innerHTML=`<b>입력번호가 필요합니다</b><span>${eng.state.size}개 조합 분석에는 입력번호 ${required}개 이상이 필요합니다.</span>`;
+      list.innerHTML=`<div class="ccl-empty">위의 ‘분석할 번호 입력’에서 번호를 입력하고 조합 분석하기를 눌러주세요.</div>`;
+      more.hidden=true;
+      return;
+    }
+
+    summary.innerHTML=`<b>${eng.state.size}개 연관조합 ${data.length.toLocaleString()}개</b><span>기준 ${selected.join('·')} · ${eng.state.scope==='all'?'전체':`최근 ${eng.state.scope}회`} · ${eng.state.minCount===1?'전체 출현':eng.state.minCount+'회 이상'}</span>`;
+    list.innerHTML=shown.length?shown.map(item=>`<button class="ccl-row" type="button" data-ccl-key="${item.key}">
+      <span class="ccl-balls">${item.nums.map(n=>`<span class="ball small-ball ${cls(Number(n))} ${selected.includes(Number(n))?'selected-ball':''}">${n}</span>`).join('')}</span>
+      <strong>${item.count}회</strong><span>${item.recentRound}회</span><span>${esc(item.recentDate)}</span>
+    </button>`).join(''):`<div class="ccl-empty">선택번호와 연결되고 현재 최소 출현 조건을 만족하는 조합이 없습니다.</div>`;
+    more.hidden=data.length<=eng.state.limit;more.textContent=`더 보기 (${eng.state.limit}/${data.length})`;
   }
   function openDetail(key){
     const eng=E(),nums=key.split(',').map(Number),items=eng.details(key);
@@ -100,6 +112,9 @@
     $('cclSort').addEventListener('change',e=>{E().state.sort=e.target.value;render();});
     $('cclMinCount').addEventListener('change',e=>{E().state.minCount=Number(e.target.value);E().state.limit=100;render();});
     $('cclBonus').addEventListener('change',e=>{E().state.includeBonus=e.target.checked;E().state.limit=100;render();refreshRecommendationSummary();});
+    $('analyzeBtn')?.addEventListener('click',()=>setTimeout(()=>{E().state.limit=100;render();refreshRecommendationSummary();},0));
+    $('comboInput')?.addEventListener('change',()=>{E().state.limit=100;render();});
+
   }
 
   function currentSelection(){
