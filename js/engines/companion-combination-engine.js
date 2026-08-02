@@ -195,9 +195,10 @@
       const nums=pool(row,opts.includeBonus??state.includeBonus);
       [2,3,4].forEach(size=>choose(nums,size).forEach(combo=>{
         const key=keyOf(combo);
-        const prev=maps[size].get(key)||{count:0,recentRound:0,nums:combo};
+        const prev=maps[size].get(key)||{count:0,recentRound:0,nums:combo,rounds:[]};
         prev.count++;
         prev.recentRound=Math.max(prev.recentRound,Number(row.round)||0);
+        prev.rounds.push(Number(row.round)||0);
         maps[size].set(key,prev);
       }));
     });
@@ -327,6 +328,344 @@
     if(top?.count)reasons.push(`핵심 패턴 ${top.nums.join('·')}이 과거 ${top.count}회 출현`);
     return reasons.slice(0,5);
   }
+
+  /* =========================================================
+     v1.9.3 Phase 3
+     Pattern Strength + Repeat-Supported Confidence + AI Link
+     ========================================================= */
+  const phase3Weights={
+    strength:{pattern:35,reproduction:30,group:20,flow:15},
+    confidence:{sample:35,lowerRepeat:30,timeSpread:20,consistency:15},
+    aiLink:{classic:70,companion:30}
+  };
+  const clamp100=v=>Math.max(0,Math.min(100,Math.round(Number(v)||0)));
+  const avgOf=arr=>arr.length?arr.reduce((s,v)=>s+(Number(v)||0),0)/arr.length:0;
+
+  function buildMapsFromRows(sourceRows,includeBonus=true){
+    const ordered=(sourceRows||[]).slice().sort((a,b)=>Number(b.round)-Number(a.round));
+    const maps={2:new Map(),3:new Map(),4:new Map(),rows:ordered,newest:0,oldest:0};
+    if(ordered.length){
+      maps.newest=Number(ordered[0].round)||0;
+      maps.oldest=Number(ordered[ordered.length-1].round)||maps.newest;
+    }
+    ordered.forEach(row=>{
+      const nums=pool(row,includeBonus);
+      [2,3,4].forEach(size=>choose(nums,size).forEach(combo=>{
+        const k=keyOf(combo);
+        const item=maps[size].get(k)||{nums:combo,count:0,recentRound:0,rounds:[]};
+        item.count++;
+        item.recentRound=Math.max(item.recentRound,Number(row.round)||0);
+        item.rounds.push(Number(row.round)||0);
+        maps[size].set(k,item);
+      }));
+    });
+    return maps;
+  }
+  function occurrenceScore(count,size){
+    const scales={2:18,3:7,4:3};
+    const scale=scales[size]||7;
+    return clamp100(Math.log1p(Number(count)||0)/Math.log1p(scale)*100);
+  }
+  function itemRecentScore(item,maps){
+    if(!item||!item.recentRound||!maps.rows.length)return 0;
+    const span=Math.max(1,maps.newest-maps.oldest);
+    return clamp100((1-(maps.newest-item.recentRound)/span)*100);
+  }
+  function timeSpreadScore(rounds,maps){
+    const unique=[...new Set((rounds||[]).filter(Boolean))].sort((a,b)=>a-b);
+    if(unique.length<2)return unique.length?18:0;
+    const span=Math.max(1,maps.newest-maps.oldest);
+    const covered=(unique[unique.length-1]-unique[0])/span;
+    const buckets=new Set(unique.map(r=>Math.min(3,Math.floor(((r-maps.oldest)/span)*4))));
+    return clamp100(covered*58+(buckets.size/4)*42);
+  }
+  function subsetRows(nums,size,maps){
+    return choose(cleanNums(nums),size).map(part=>{
+      const item=maps[size].get(keyOf(part));
+      return {
+        nums:part,
+        count:item?.count||0,
+        recentRound:item?.recentRound||0,
+        rounds:item?.rounds||[],
+        occurrence:occurrenceScore(item?.count||0,size),
+        recent:itemRecentScore(item,maps)
+      };
+    });
+  }
+  function lowerSupportForSubset(subset,maps){
+    const size=subset.length;
+    if(size<=2)return occurrenceScore(maps[2].get(keyOf(subset))?.count||0,2);
+    const pairScores=subsetRows(subset,2,maps).map(x=>x.occurrence);
+    const tripleScores=size>=4?subsetRows(subset,3,maps).map(x=>x.occurrence):[];
+    return clamp100(avgOf(pairScores)*.45+avgOf(tripleScores)*.55);
+  }
+  function recentFullConsistency(nums,maps){
+    const fullRows=maps.rows;
+    if(!fullRows.length)return 0;
+    const recentRows=fullRows.slice(0,Math.min(50,fullRows.length));
+    const sizes=[2,3,4];
+    const diffs=[];
+    sizes.forEach(size=>{
+      const parts=choose(cleanNums(nums),size);
+      parts.forEach(part=>{
+        const full=(maps[size].get(keyOf(part))?.count||0)/Math.max(1,fullRows.length);
+        let rc=0;
+        recentRows.forEach(row=>{
+          const p=pool(row,true);
+          if(part.every(n=>p.includes(n)))rc++;
+        });
+        const recent=rc/Math.max(1,recentRows.length);
+        const denom=Math.max(full,recent,1/fullRows.length);
+        diffs.push(Math.min(1,Math.abs(recent-full)/denom));
+      });
+    });
+    return clamp100((1-avgOf(diffs))*100);
+  }
+  function groupCohesion(nums,maps){
+    const pairs=subsetRows(nums,2,maps);
+    const coverage=pairs.filter(x=>x.count>0).length/Math.max(1,pairs.length);
+    const strength=avgOf(pairs.map(x=>x.occurrence))/100;
+    const degrees=new Map(cleanNums(nums).map(n=>[n,0]));
+    pairs.forEach(x=>{
+      const w=Math.min(1,x.occurrence/100);
+      x.nums.forEach(n=>degrees.set(n,(degrees.get(n)||0)+w));
+    });
+    const vals=[...degrees.values()];
+    const mean=avgOf(vals);
+    const variance=avgOf(vals.map(v=>(v-mean)**2));
+    const balance=mean?Math.max(0,1-Math.sqrt(variance)/mean):0;
+    return clamp100((coverage*.35+strength*.45+balance*.20)*100);
+  }
+  function flowStrength(nums,maps){
+    const all=[...subsetRows(nums,2,maps),...subsetRows(nums,3,maps),...subsetRows(nums,4,maps)];
+    const active=all.filter(x=>x.count>0);
+    if(!active.length)return 0;
+    const recent=avgOf(active.map(x=>x.recent));
+    const consistency=recentFullConsistency(nums,maps);
+    return clamp100(recent*.62+consistency*.38);
+  }
+  function repeatSupportedMetrics(nums,maps){
+    const pairs=subsetRows(nums,2,maps);
+    const triples=subsetRows(nums,3,maps);
+    const quads=subsetRows(nums,4,maps);
+
+    const structural=clamp100(
+      avgOf(pairs.map(x=>x.occurrence))*.25+
+      avgOf(triples.map(x=>x.occurrence))*.35+
+      avgOf(quads.map(x=>x.occurrence))*.40
+    );
+
+    const directRepeat=clamp100(
+      avgOf(pairs.map(x=>x.count>=2?x.occurrence:x.occurrence*.55))*.25+
+      avgOf(triples.map(x=>x.count>=2?x.occurrence:x.occurrence*.48))*.35+
+      avgOf(quads.map(x=>{
+        const lower=lowerSupportForSubset(x.nums,maps);
+        if(x.count>=2)return x.occurrence;
+        if(x.count===1)return x.occurrence*(.25+.60*lower/100);
+        return 0;
+      }))*.40
+    );
+
+    const group=groupCohesion(nums,maps);
+    const flow=flowStrength(nums,maps);
+
+    const sample=clamp100(
+      Math.min(1,avgOf(pairs.map(x=>x.count))/5)*25+
+      Math.min(1,avgOf(triples.map(x=>x.count))/2.5)*30+
+      Math.min(1,avgOf(quads.map(x=>x.count))/1.5)*45
+    );
+
+    const lowerRepeat=clamp100(
+      avgOf(triples.map(x=>lowerSupportForSubset(x.nums,maps)))*.40+
+      avgOf(quads.map(x=>lowerSupportForSubset(x.nums,maps)))*.60
+    );
+
+    const allRounds=[
+      ...triples.flatMap(x=>x.rounds),
+      ...quads.flatMap(x=>x.rounds)
+    ];
+    const timeSpread=timeSpreadScore(allRounds,maps);
+    const consistency=recentFullConsistency(nums,maps);
+
+    const strength=clamp100(
+      structural*.35+
+      directRepeat*.30+
+      group*.20+
+      flow*.15
+    );
+    const confidence=clamp100(
+      sample*.35+
+      lowerRepeat*.30+
+      timeSpread*.20+
+      consistency*.15
+    );
+    const adjusted=clamp100(strength*(.65+(confidence/100)*.35));
+
+    return {
+      strength,confidence,adjusted,
+      components:{pattern:structural,reproduction:directRepeat,group,flow},
+      confidenceParts:{sample,lowerRepeat,timeSpread,consistency},
+      pair:{avg:clamp100(avgOf(pairs.map(x=>x.occurrence))),top:pairs.sort((a,b)=>b.occurrence-a.occurrence).slice(0,6)},
+      triple:{avg:clamp100(avgOf(triples.map(x=>x.occurrence))),top:triples.sort((a,b)=>b.occurrence-a.occurrence).slice(0,5)},
+      quad:{avg:clamp100(avgOf(quads.map(x=>x.occurrence))),top:quads.sort((a,b)=>b.occurrence-a.occurrence).slice(0,3)},
+      recent:flow
+    };
+  }
+  function classicAIRaw(nums){
+    try{
+      if(typeof global.comboScoreParts==='function'&&typeof global.companionAnalysis==='function'&&typeof global.frequencyMap==='function'){
+        const parts=global.comboScoreParts(cleanNums(nums),global.companionAnalysis(),global.frequencyMap(global.lottoData||[]));
+        return {raw:Number(parts.total)||0,parts};
+      }
+    }catch(e){}
+    return {raw:0,parts:null};
+  }
+  function normalizeClassic(items){
+    const vals=items.map(x=>x.classic.raw);
+    const min=Math.min(...vals),max=Math.max(...vals);
+    items.forEach(x=>{
+      x.classic.score=max>min?clamp100(55+(x.classic.raw-min)/(max-min)*43):75;
+      x.aiLinked=clamp100(x.classic.score*.70+x.pattern.adjusted*.30);
+    });
+  }
+  function scorePatternComboV3(nums,opts={}){
+    const clean=cleanNums(nums);
+    if(clean.length!==6)return null;
+    const maps=opts.maps||buildPatternMaps(opts);
+    const m=repeatSupportedMetrics(clean,maps);
+    return {
+      nums:clean,
+      score:m.adjusted,
+      strength:m.strength,
+      confidence:m.confidence,
+      adjusted:m.adjusted,
+      grade:gradeForScore(m.adjusted),
+      components:m.components,
+      confidenceParts:m.confidenceParts,
+      pair:m.pair,triple:m.triple,quad:m.quad,recent:m.recent
+    };
+  }
+  function compareOptimizedV3(a,b){
+    return (b.aiLinked||0)-(a.aiLinked||0)
+      || b.pattern.adjusted-a.pattern.adjusted
+      || b.pattern.confidence-a.pattern.confidence
+      || a.replaceCount-b.replaceCount
+      || a.nums.join(',').localeCompare(b.nums.join(','),undefined,{numeric:true});
+  }
+  function optimizePatternV3(baseNums,opts={}){
+    const base=cleanNums(baseNums);
+    if(base.length!==6)return{error:'6개 번호가 필요합니다.'};
+    const maxReplace=Math.max(1,Math.min(3,Number(opts.maxReplace)||3));
+    const beamWidth=Math.max(35,Math.min(180,Number(opts.beamWidth)||100));
+    const maps=buildPatternMaps(opts);
+    const currentPattern=scorePatternComboV3(base,{...opts,maps});
+    const current={nums:base,removed:[],added:[],replaceCount:0,pattern:currentPattern,classic:classicAIRaw(base)};
+    const poolNums=candidatePool(base,opts).slice(0,32);
+    let frontier=[current],all=[current];
+    const seen=new Set([keyOf(base)]);
+    for(let depth=1;depth<=maxReplace;depth++){
+      const next=[];
+      frontier.forEach(node=>{
+        node.nums.forEach(oldNum=>{
+          poolNums.forEach(newNum=>{
+            if(node.nums.includes(newNum))return;
+            const nums=cleanNums(node.nums.filter(n=>n!==oldNum).concat(newNum));
+            const k=keyOf(nums);
+            if(seen.has(k))return;
+            seen.add(k);
+            next.push({
+              nums,
+              removed:cleanNums([...node.removed,oldNum]),
+              added:cleanNums([...node.added,newNum]),
+              replaceCount:depth,
+              pattern:scorePatternComboV3(nums,{...opts,maps}),
+              classic:classicAIRaw(nums)
+            });
+          });
+        });
+      });
+      normalizeClassic(next);
+      next.sort(compareOptimizedV3);
+      frontier=next.slice(0,beamWidth);
+      all.push(...frontier);
+    }
+    normalizeClassic(all);
+    all.sort(compareOptimizedV3);
+    const baseItem=all.find(x=>x.replaceCount===0)||current;
+    const improved=all.filter(x=>x.replaceCount>0&&x.aiLinked>baseItem.aiLinked);
+    const best=improved[0]||all.find(x=>x.replaceCount>0)||null;
+    if(!best)return{current:baseItem,best:null,coOptimal:[],tested:seen.size};
+    const coOptimal=all.filter(x=>
+      x.replaceCount>0 &&
+      x.aiLinked===best.aiLinked &&
+      x.pattern.adjusted>=best.pattern.adjusted-1
+    ).slice(0,8);
+    return {
+      current:baseItem,best,coOptimal,tested:seen.size,
+      reasons:explainV3(baseItem,best),
+      weights:phase3Weights
+    };
+  }
+  function explainV3(current,best){
+    const reasons=[];
+    const pd=best.pattern.adjusted-current.pattern.adjusted;
+    const ad=(best.aiLinked||0)-(current.aiLinked||0);
+    if(ad)reasons.push(`AI 연동점수 ${current.aiLinked} → ${best.aiLinked} (${ad>0?'+':''}${ad})`);
+    if(pd)reasons.push(`Confidence 보정 Pattern Score ${current.pattern.adjusted} → ${best.pattern.adjusted}`);
+    if(best.pattern.confidence>current.pattern.confidence)reasons.push(`반복기반 Confidence ${current.pattern.confidence}% → ${best.pattern.confidence}%`);
+    const c=best.pattern.components,old=current.pattern.components;
+    const gains=[
+      ['패턴성',c.pattern-old.pattern],
+      ['재현성',c.reproduction-old.reproduction],
+      ['번호군',c.group-old.group],
+      ['흐름성',c.flow-old.flow]
+    ].sort((a,b)=>b[1]-a[1]).filter(x=>x[1]>0);
+    gains.slice(0,2).forEach(x=>reasons.push(`${x[0]} ${x[1]>0?'+':''}${x[1]}점 개선`));
+    const top=best.pattern.quad.top.find(x=>x.count>0)||best.pattern.triple.top.find(x=>x.count>0);
+    if(top)reasons.push(`핵심 ${top.nums.join('·')} 패턴 ${top.count}회, 하위 반복 근거 포함`);
+    return reasons.slice(0,5);
+  }
+  function deterministicControls(nums,count=12){
+    const base=cleanNums(nums),out=[],seen=new Set();
+    for(let shift=1;out.length<count&&shift<45;shift++){
+      const c=cleanNums(base.map((n,i)=>((n-1+shift*(i%3+1))%45)+1));
+      const k=keyOf(c);
+      if(c.length===6&&!seen.has(k)){seen.add(k);out.push(c);}
+    }
+    return out;
+  }
+  function backtestPhase3(opts={}){
+    const all=rows();
+    const testCount=Math.max(20,Math.min(100,Number(opts.testCount)||50));
+    const start=Math.min(testCount,Math.max(0,all.length-80));
+    const targets=all.slice(0,start||testCount);
+    const records=[];
+    targets.forEach((target,index)=>{
+      const training=all.slice(index+1);
+      if(training.length<120)return;
+      const maps=buildMapsFromRows(training,opts.includeBonus??true);
+      const actual=scorePatternComboV3(target.numbers||target.nums,{maps});
+      const controls=deterministicControls(target.numbers||target.nums,14).map(n=>scorePatternComboV3(n,{maps}));
+      const scores=[actual.adjusted,...controls.map(x=>x.adjusted)].sort((a,b)=>a-b);
+      const rank=scores.filter(x=>x<=actual.adjusted).length/scores.length*100;
+      records.push({
+        round:target.round,score:actual.adjusted,confidence:actual.confidence,percentile:Math.round(rank),
+        top25:rank>=75,top50:rank>=50
+      });
+    });
+    const n=records.length||1;
+    const avgPercentile=Math.round(records.reduce((s,x)=>s+x.percentile,0)/n);
+    const top25=Math.round(records.filter(x=>x.top25).length/n*100);
+    const top50=Math.round(records.filter(x=>x.top50).length/n*100);
+    const high=records.filter(x=>x.confidence>=60);
+    const highTop25=high.length?Math.round(high.filter(x=>x.top25).length/high.length*100):0;
+    return {
+      count:records.length,avgPercentile,top25,top50,highConfidenceCount:high.length,highTop25,
+      verdict:avgPercentile>=60?'양호':avgPercentile>=52?'보통':'재튜닝 필요',
+      records:records.slice(0,12),
+      note:'각 회차 이전 데이터만 사용해 실제 당첨조합의 점수를 14개 결정론적 대조조합과 비교했습니다.'
+    };
+  }
   function recommendationPatterns(baseNums,recommendations,opts={}){
     const patterns=cleanNums(recommendations).map(candidate=>{
       const two=bestWithCandidate(baseNums,candidate,2,opts);
@@ -343,6 +682,8 @@
   }
   global.CompanionCombinationEngine=Object.freeze({
     state,defaults,aggregate,details,scopedRows,pool,choose,keyOf,
-    bestWithCandidate,recommendationPatterns,strength,selectedNumsFromInput,requiredSelectedCount,indexForPattern,patternSetIndex,aiUsageForPattern,gradeForScore,scorePatternCombo,optimizePattern,explainPatternRecommendation
+    bestWithCandidate,recommendationPatterns,strength,selectedNumsFromInput,requiredSelectedCount,indexForPattern,patternSetIndex,aiUsageForPattern,gradeForScore,
+    scorePatternCombo:scorePatternComboV3,optimizePattern:optimizePatternV3,explainPatternRecommendation,
+    phase3Weights,scorePatternComboV3,optimizePatternV3,backtestPhase3
   });
 })(window);
