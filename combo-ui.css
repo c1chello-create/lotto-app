@@ -217,3 +217,24 @@ button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
   overflow:hidden;
   text-overflow:ellipsis;
 }
+
+
+/* v1.9.1 Companion Phase 1 */
+.acp-recommend-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}
+.acp-recommend-head b{font-size:14px;color:#153767}
+.acp-recommend-head span,.acp-best-mini,.acp-best-badge{border-radius:999px;background:#fff3c4;color:#8a5c00;font-weight:900}
+.acp-recommend-head span{padding:4px 8px;font-size:10px}
+.acp-best-mini{padding:2px 6px;font-size:9px;margin-left:2px}
+.acp-row em strong{color:#0e4b92}
+.acp-index-pill{margin-left:auto;background:#eef6ff;color:#0e4b92;padding:5px 8px;border-radius:999px;font-size:11px;font-weight:900}
+.acp-best-badge{padding:5px 8px;font-size:10px}
+.acp-index-parts{font-size:11px;color:#67758a;background:#f6f9fd;border-radius:10px;padding:7px 9px;margin:8px 0}
+.acp-overview-line{grid-template-columns:82px 1fr auto auto}
+.acp-ai-badge{font-style:normal;border-radius:999px;padding:3px 6px;background:#f0f2f5;color:#6b7280;font-size:9px;font-weight:900}
+.acp-ai-badge.is-used{background:#e8f5ff;color:#07569e}
+@media(max-width:390px){
+  .acp-overview-title{flex-wrap:wrap}
+  .acp-index-pill{margin-left:0}
+  .acp-overview-line{grid-template-columns:72px 1fr auto}
+  .acp-overview-line .acp-ai-badge{grid-column:2/-1;justify-self:start}
+}
