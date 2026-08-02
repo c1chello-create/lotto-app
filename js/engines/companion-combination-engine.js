@@ -30,15 +30,45 @@
     if(includeBonus&&Number(row.bonus)>=1&&Number(row.bonus)<=45)nums.push(Number(row.bonus));
     return cleanNums(nums);
   }
+  function selectedNumsFromInput(){
+    const input=global.document&&global.document.getElementById('comboInput');
+    const raw=(input&&input.value)||'';
+    return cleanNums(raw.split(/[\s,]+/));
+  }
+  function requiredSelectedCount(size){
+    return Math.max(1,Number(size)-1);
+  }
   function aggregate(opts={}){
     const size=Number(opts.size||state.size);
     const includeBonus=opts.includeBonus??state.includeBonus;
     const minCount=Number(opts.minCount??state.minCount??1);
+    const selected=cleanNums(opts.selectedNums||selectedNumsFromInput());
+    const selectedSet=new Set(selected);
+    const required=requiredSelectedCount(size);
     const map=new Map();
+
+    if(selected.length<required){
+      state.last=[];
+      return [];
+    }
+
     scopedRows(opts.scope||state.scope).forEach(row=>{
       choose(pool(row,includeBonus),size).forEach(nums=>{
+        const selectedHits=nums.filter(n=>selectedSet.has(n));
+        // 입력번호끼리의 조합은 포함하고, 입력번호와 무관한 조합은 제외합니다.
+        // 2개=입력번호 1개 이상, 3개=2개 이상, 4개=3개 이상.
+        if(selectedHits.length<required)return;
+
         const key=keyOf(nums);let item=map.get(key);
-        if(!item){item={key,nums,count:0,recentRound:0,recentDate:'',rounds:[]};map.set(key,item);}
+        if(!item){
+          item={
+            key,nums,count:0,recentRound:0,recentDate:'',rounds:[],
+            selectedHits:selectedHits.slice(),
+            companionNums:nums.filter(n=>!selectedSet.has(n)),
+            selectedOnly:selectedHits.length===nums.length
+          };
+          map.set(key,item);
+        }
         item.count++;
         item.rounds.push(row);
         if(Number(row.round)>Number(item.recentRound||0)){
@@ -46,6 +76,7 @@
         }
       });
     });
+
     const list=[...map.values()].filter(x=>x.count>=minCount);
     const sort=opts.sort||state.sort;
     list.sort((a,b)=>{
@@ -96,6 +127,6 @@
   }
   global.CompanionCombinationEngine=Object.freeze({
     state,defaults,aggregate,details,scopedRows,pool,choose,keyOf,
-    bestWithCandidate,recommendationPatterns,strength
+    bestWithCandidate,recommendationPatterns,strength,selectedNumsFromInput,requiredSelectedCount
   });
 })(window);
