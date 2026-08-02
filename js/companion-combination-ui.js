@@ -88,7 +88,7 @@
       <div class="ccl-sheet-head"><div><b>추천번호별 동반 패턴</b><p>${eng.state.scope==='all'?'전체':`최근 ${eng.state.scope}회`} · 보너스 ${eng.state.includeBonus?'포함':'제외'}</p></div><button type="button" data-ccl-close>✕</button></div>
       <div class="acp-overview-list">${items.map((x,i)=>`<section class="acp-overview-card">
         <div class="acp-overview-title">${ball(x.candidate)}<b>${x.candidate}번</b>
-          <span class="acp-index-pill">Companion Index ${x.index.score}</span>
+          <span class="acp-index-pill">Companion Index ${x.index.score} · ${E().gradeForScore(x.index.score).grade}</span>
           ${i===0?'<span class="acp-best-badge">AI 추천 패턴</span>':''}
         </div>
         <div class="acp-index-parts">2조합 ${x.index.two} · 3조합 ${x.index.three} · 4조합 ${x.index.four} · 최근성 ${x.index.recent}</div>
@@ -113,6 +113,13 @@
       }
       const row=e.target.closest('[data-ccl-key]');if(row)openDetail(row.dataset.cclKey);
       if(e.target.closest('[data-open-rec-pattern]'))openRecommendationDetail();
+      const apply=e.target.closest('[data-cpo-apply]');
+      if(apply){
+        const nums=apply.dataset.cpoApply.split(',').map(Number);
+        if($('comboInput'))$('comboInput').value=nums.join(' ');
+        $('analyzeBtn')?.click();
+        document.querySelector('#companionPatternOptimizer')?.scrollIntoView({behavior:'smooth',block:'center'});
+      }
       if(e.target.closest('[data-ccl-close]'))close();
       if(e.target.closest('#cclMore')){E().state.limit+=100;render();}
     });
@@ -143,7 +150,7 @@
       <div class="acp-recommend-head"><b>Companion Pattern AI</b><span>Preview</span></div>
       <div class="acp-list">${items.map((x,i)=>`<button type="button" class="acp-row" data-open-rec-pattern>
         <span>${ball(x.candidate)}<b>${x.candidate}번</b>${i===0?'<i class="acp-best-mini">추천</i>':''}</span>
-        <em><strong>지수 ${x.index.score}</strong> · 2조합 ${x.strength2} · 3조합 ${x.three?.count||0}회 · ${x.aiUsage.label}</em>
+        <em><strong>지수 ${x.index.score} · ${E().gradeForScore(x.index.score).grade}</strong> · 2조합 ${x.strength2} · 3조합 ${x.three?.count||0}회 · ${x.aiUsage.label}</em>
       </button>`).join('')}</div>
       <button type="button" class="acp-detail-btn" id="acpDetailBtn">추천번호별 최고 2·3·4조합 보기</button>
       <p>Companion Index와 AI 반영 배지는 설명용 Preview입니다. 기존 AI Score와 추천 순위 산식은 변경하지 않습니다.</p>
@@ -157,6 +164,57 @@
     if(html)card.insertAdjacentHTML('beforeend',html);
     const btn=$('acpDetailBtn');
     if(btn)btn.onclick=openRecommendationDetail;
+    ensureOptimizer();
+  }
+
+  function optimizerShell(){
+    return `<section id="companionPatternOptimizer" class="companion-pattern-optimizer">
+      <div class="cpo-head"><div><b>🧩 Companion Pattern Optimizer</b><p>현재 번호를 최대한 유지하면서 Pattern Score가 높은 조합을 탐색합니다.</p></div><span>v1.9.2</span></div>
+      <div class="cpo-controls">
+        <label>최대 교체<select id="cpoMaxReplace"><option value="1">1개</option><option value="2">2개</option><option value="3" selected>3개</option></select></label>
+        <button type="button" id="cpoRun">패턴 최적화 실행</button>
+      </div>
+      <div id="cpoResult" class="cpo-result"><p>번호 6개를 분석한 뒤 실행할 수 있습니다.</p></div>
+    </section>`;
+  }
+  function ensureOptimizer(){
+    const patternBox=$('aiCompanionPatternBox');
+    if(!patternBox||$('companionPatternOptimizer'))return;
+    patternBox.insertAdjacentHTML('afterend',optimizerShell());
+    $('cpoRun')?.addEventListener('click',runOptimizer);
+  }
+  function scoreCard(title,item,isBest){
+    if(!item)return'';
+    const p=item.pattern||item;
+    return `<section class="cpo-score-card ${isBest?'is-best':''}">
+      <div class="cpo-score-head"><b>${title}</b><span>${p.grade.grade}등급 · ${p.score}점</span></div>
+      <div class="cpo-balls">${p.nums.map(ball).join('')}</div>
+      <div class="cpo-parts"><span>2조합 ${p.pair.avg}</span><span>3조합 ${p.triple.avg}</span><span>4조합 ${p.quad.avg}</span><span>최근성 ${p.recent}</span></div>
+    </section>`;
+  }
+  function runOptimizer(){
+    const eng=E(),result=$('cpoResult'),base=currentSelection();
+    if(!eng||base.length!==6){result.innerHTML='<div class="cpo-warning">분석번호 6개를 입력해 주세요.</div>';return;}
+    const btn=$('cpoRun');btn.disabled=true;btn.textContent='탐색 중...';
+    setTimeout(()=>{
+      try{
+        const data=eng.optimizePattern(base,{
+          maxReplace:Number($('cpoMaxReplace')?.value||3),
+          scope:eng.state.scope,
+          includeBonus:eng.state.includeBonus
+        });
+        if(data.error){result.innerHTML=`<div class="cpo-warning">${data.error}</div>`;return;}
+        if(!data.best){result.innerHTML=scoreCard('현재 조합',data.current,false)+'<p class="cpo-note">더 높은 Pattern Score 조합을 찾지 못했습니다.</p>';return;}
+        const removed=data.best.removed.join('·'),added=data.best.added.join('·');
+        result.innerHTML=`
+          <div class="cpo-compare">${scoreCard('현재 조합',data.current,false)}<div class="cpo-arrow">↓</div>${scoreCard('대표 최적해',data.best,true)}</div>
+          <div class="cpo-change">교체 ${removed||'-'} → ${added||'-'} · <strong>+${data.best.pattern.score-data.current.score}점</strong></div>
+          <div class="cpo-reasons"><b>AI 추천 이유</b>${data.reasons.map(x=>`<p>✓ ${x}</p>`).join('')}</div>
+          <button type="button" class="cpo-apply" data-cpo-apply="${data.best.nums.join(',')}">대표 최적해 적용</button>
+          ${data.coOptimal.length>1?`<div class="cpo-co"><b>공동 최적해 ${data.coOptimal.length}개</b>${data.coOptimal.map((x,i)=>`<button type="button" data-cpo-apply="${x.nums.join(',')}"><span>${i+1}</span>${x.nums.map(ball).join('')}<em>${x.pattern.grade.grade} · ${x.pattern.score}점</em></button>`).join('')}</div>`:''}
+          <p class="cpo-note">총 ${data.tested.toLocaleString()}개 후보를 단계형 탐색했습니다. Pattern Score는 과거 패턴 강도 지수이며 당첨 확률이 아닙니다.</p>`;
+      }finally{btn.disabled=false;btn.textContent='패턴 최적화 실행';}
+    },30);
   }
   function patchRenderCompanion(){
     if(global.__CCL_RENDER_PATCHED__)return;
