@@ -117,16 +117,74 @@
     if(size===3){if(c>=4)return'강함';if(c>=2)return'보통';return'약함';}
     if(c>=3)return'강함';if(c>=2)return'보통';return'약함';
   }
+  function normalize(value,max){
+    const v=Number(value)||0,m=Number(max)||0;
+    return m>0?Math.max(0,Math.min(100,Math.round(v/m*100))):0;
+  }
+  function recencyScore(round,opts={}){
+    const scoped=scopedRows(opts.scope||state.scope);
+    if(!scoped.length||!Number(round))return 0;
+    const newest=Number(scoped[0].round)||0;
+    const oldest=Number(scoped[scoped.length-1].round)||newest;
+    const span=Math.max(1,newest-oldest);
+    return Math.max(0,Math.min(100,Math.round((1-(newest-Number(round))/span)*100)));
+  }
+  function indexForPattern(item,size,opts={}){
+    if(!item)return 0;
+    const scoped=scopedRows(opts.scope||state.scope);
+    const theoretical=Math.max(1,scoped.length);
+    const sizeWeight={2:1,3:1.8,4:3}[Number(size)]||1;
+    const countBase=Math.max(1,Math.sqrt(theoretical)/sizeWeight);
+    const countScore=Math.min(100,Math.round((Math.log1p(item.count||0)/Math.log1p(countBase))*100));
+    return Math.round(countScore*.82+recencyScore(item.recentRound,opts)*.18);
+  }
+  function patternSetIndex(pattern,opts={}){
+    const two=indexForPattern(pattern.two,2,opts);
+    const three=indexForPattern(pattern.three,3,opts);
+    const four=indexForPattern(pattern.four,4,opts);
+    const recent=Math.max(
+      recencyScore(pattern.two?.recentRound,opts),
+      recencyScore(pattern.three?.recentRound,opts),
+      recencyScore(pattern.four?.recentRound,opts)
+    );
+    const score=Math.round(two*.45+three*.30+four*.15+recent*.10);
+    return {score,two,three,four,recent};
+  }
+  function rankedCombos(){
+    try{
+      if(typeof global.companionAnalysis==='function'&&typeof global.makeRankedCombos==='function'){
+        return global.makeRankedCombos(global.companionAnalysis())||[];
+      }
+    }catch(e){}
+    return [];
+  }
+  function aiUsageForPattern(pattern){
+    const ranked=rankedCombos();
+    const keys=[pattern.two,pattern.three,pattern.four].filter(Boolean).map(x=>x.nums||[]);
+    const matchedRanks=[];
+    ranked.forEach(combo=>{
+      const nums=combo.nums||[];
+      if(keys.some(key=>key.length&&key.every(n=>nums.includes(n))))matchedRanks.push(combo.rank||0);
+    });
+    if(matchedRanks.length)return {used:true,label:'AI 반영',bestRank:Math.min(...matchedRanks.filter(Boolean))||null};
+    return {used:false,label:'참고 패턴',bestRank:null};
+  }
   function recommendationPatterns(baseNums,recommendations,opts={}){
-    return cleanNums(recommendations).map(candidate=>{
+    const patterns=cleanNums(recommendations).map(candidate=>{
       const two=bestWithCandidate(baseNums,candidate,2,opts);
       const three=bestWithCandidate(baseNums,candidate,3,opts);
       const four=bestWithCandidate(baseNums,candidate,4,opts);
-      return {candidate,two,three,four,strength2:strength(two?.count||0,2)};
+      const item={candidate,two,three,four,strength2:strength(two?.count||0,2)};
+      item.index=patternSetIndex(item,opts);
+      item.aiUsage=aiUsageForPattern(item);
+      return item;
     });
+    const maxScore=Math.max(1,...patterns.map(x=>x.index.score));
+    patterns.forEach(x=>{x.index.relative=Math.round(x.index.score/maxScore*100);});
+    return patterns.sort((a,b)=>b.index.score-a.index.score||a.candidate-b.candidate);
   }
   global.CompanionCombinationEngine=Object.freeze({
     state,defaults,aggregate,details,scopedRows,pool,choose,keyOf,
-    bestWithCandidate,recommendationPatterns,strength,selectedNumsFromInput,requiredSelectedCount
+    bestWithCandidate,recommendationPatterns,strength,selectedNumsFromInput,requiredSelectedCount,indexForPattern,patternSetIndex,aiUsageForPattern
   });
 })(window);
