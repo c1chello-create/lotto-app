@@ -267,3 +267,14 @@ button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 .cbt-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:8px}.cbt-grid span{background:#f2f6fb;border-radius:9px;text-align:center;padding:7px 3px;font-size:9px;color:#68768a}.cbt-grid b{display:block;font-size:14px;color:#173e72}
 .cbt-result details{font-size:10px;color:#627087}.cbt-result details div{padding:5px;border-top:1px solid #edf0f4}
 @media(max-width:390px){.cpo-phase3-summary,.cpo-confidence-parts,.cbt-grid{grid-template-columns:1fr 1fr}.cpo-link-formula{display:block}.cpo-link-formula span{display:block;text-align:left;margin-top:4px}}
+
+
+/* ===== v1.9.3 AI 점수 상승 기여도 세부 표시 ===== */
+.cpo-contribution{margin:10px 0;border:1px solid #c9dcef;border-radius:14px;background:#fbfdff;overflow:hidden}
+.cpo-contribution>summary{display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;list-style:none;padding:12px;color:#173e72;font-size:13px;font-weight:900}
+.cpo-contribution>summary::-webkit-details-marker{display:none}.cpo-contribution>summary:after{content:"⌃";font-size:13px;color:#6b7d94}.cpo-contribution:not([open])>summary:after{content:"⌄"}
+.cpo-contribution>summary strong{margin-left:auto;color:#0f6b45;background:#eaf8f1;border-radius:999px;padding:5px 8px;font-size:11px;white-space:nowrap}
+.cpo-contribution-body{border-top:1px solid #dce7f2;padding:11px}.cpo-contribution-total,.cpo-contribution-row,.cpo-contribution-check{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 9px;border-radius:9px;font-size:11px}
+.cpo-contribution-total{background:#edf6ff;margin-bottom:6px}.cpo-contribution-total b{color:#153f75;font-size:13px}.cpo-contribution-row{border-bottom:1px solid #edf1f5}.cpo-contribution-row b{color:#176f4a}.cpo-contribution-row.is-correction b{color:#8a6500}.cpo-contribution-check{margin-top:7px;background:#f1faf5;color:#175c40;font-weight:900}
+.cpo-contribution-sub{margin-top:8px;border:1px solid #e1e8f0;border-radius:10px;background:#fff}.cpo-contribution-sub>summary{cursor:pointer;padding:9px 10px;font-size:11px;font-weight:900;color:#435977}.cpo-contribution-sub>div{padding:0 10px 8px}.cpo-contribution-sub>div>div{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid #f0f3f7;font-size:10px;color:#66758a}.cpo-contribution-sub em{font-style:normal;font-weight:800;color:#314d70;text-align:right}.cpo-contribution-body>p{margin:9px 2px 0;font-size:10px;line-height:1.5;color:#748196}
+@media(max-width:390px){.cpo-contribution>summary{align-items:flex-start}.cpo-contribution-sub>div>div{display:block}.cpo-contribution-sub em{display:block;margin-top:3px;text-align:left}}
