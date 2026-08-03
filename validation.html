@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>행운로또 v2.0 Validation Engine</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="combo-ui.css?v=v200-validation">
+<link rel="stylesheet" href="validation.css?v=v200-validation">
+</head>
+<body>
+<main class="validation-wrap">
+  <header class="validation-top"><a href="combo.html">‹</a><div><b>v2.0 Validation Engine</b><span id="valStatus">데이터 불러오는 중...</span></div><i>🧪</i></header>
+
+  <section class="validation-card">
+    <div class="validation-title"><div><b>단일 회차 백테스트</b><p>선택 회차보다 이전 데이터만 사용합니다. 기본 기준번호는 직전 회차 당첨번호입니다.</p></div><span>Walk-Forward</span></div>
+    <label>테스트 회차<select id="valRound"></select></label>
+    <label>기준번호<input id="valBase" inputmode="numeric" placeholder="예: 5 9 12 17 33 40"></label>
+    <label class="val-check"><input id="valBonus" type="checkbox" checked> 보너스 번호 포함</label>
+    <div id="valActual" class="val-actual"></div>
+    <button id="valSingleRun" class="validation-primary">선택 회차 백테스트 실행</button>
+    <div id="valSingleResult"></div>
+  </section>
+
+  <section class="validation-card">
+    <div class="validation-title"><div><b>구간별 성능 검증</b><p>Confidence와 Pattern Strength가 높을수록 실제 분별력도 높아지는지 확인합니다.</p></div><span>Threshold</span></div>
+    <label>검증 범위<select id="valCount"><option value="50">최근 50회</option><option value="100">최근 100회</option></select></label>
+    <button id="valReportRun" class="validation-primary">구간별 백테스트 실행</button>
+    <div id="valReportResult"></div>
+  </section>
+
+  <section class="validation-note">
+    실제 당첨조합의 Companion 점수를 해당 회차 이전 데이터로 계산하고, 결정론적 대조조합과 비교합니다.
+    점수·백분위·백테스트는 과거 패턴 검증 지표이며 당첨 확률을 의미하지 않습니다.
+  </section>
+</main>
+<script src="js/engines/companion-combination-engine.js?v=v200-validation"></script>
+<script src="js/engines/validation-engine.js?v=v200-validation"></script>
+<script src="js/validation-ui.js?v=v200-validation"></script>
+</body>
+</html>
