@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0f2f5f">
+  <title>행운로또 AI 대시보드</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="combo-ui.css?v=v193-score-contribution1">
+  <link rel="stylesheet" href="score-fusion.css?v=v100-fusion">
+  <link rel="stylesheet" href="css/dashboard.css?v=v200-dashboard-preview1">
+</head>
+<body class="dashboard-body">
+  <div class="dashboard-app">
+    <header class="dashboard-header">
+      <a class="dashboard-back" href="index.html" aria-label="메인으로">‹</a>
+      <div>
+        <b>행운로또 AI 대시보드</b>
+        <span>추천 · 동반패턴 · Fusion · 검증을 한 화면에서</span>
+      </div>
+      <span class="dashboard-version">v2.0</span>
+    </header>
+
+    <main>
+      <section class="dashboard-card dashboard-input-card">
+        <div class="dashboard-card-head">
+          <div><b>분석번호</b><span>2개~6개, 최적화·Fusion은 6개 기준</span></div>
+          <button type="button" id="dashUseSaved">저장번호</button>
+        </div>
+        <input id="dashComboInput" class="dashboard-input" inputmode="numeric" placeholder="예: 5 9 16 19 33 42" autocomplete="off">
+        <div class="dashboard-scope" id="dashScope">
+          <button type="button" data-scope="50" class="active">최근 50회</button>
+          <button type="button" data-scope="100">최근 100회</button>
+          <button type="button" data-scope="all">전체</button>
+        </div>
+        <label class="dashboard-check"><input type="checkbox" id="dashBonus" checked> 보너스 번호 포함</label>
+        <button type="button" id="dashAnalyze" class="dashboard-primary">AI 종합분석</button>
+        <p id="dashStatus" class="dashboard-status">로또 데이터를 불러오는 중입니다.</p>
+      </section>
+
+      <section id="dashAssistant" class="dashboard-card dashboard-assistant is-empty">
+        <div class="dashboard-card-head"><div><b>🤖 AI 한줄 판단</b><span>핵심 결과를 먼저 요약합니다.</span></div></div>
+        <p>번호를 입력하면 추천 유지·교체 판단과 가장 강한 근거를 표시합니다.</p>
+      </section>
+
+      <section id="dashHero" class="dashboard-card dashboard-hero is-hidden"></section>
+      <section id="dashMetrics" class="dashboard-metrics is-hidden"></section>
+
+      <section id="dashFusion" class="dashboard-card is-hidden"></section>
+      <section id="dashAIScore" class="dashboard-card is-hidden"></section>
+      <section id="dashCompanion" class="dashboard-card is-hidden"></section>
+
+      <section id="dashOptimizer" class="dashboard-card is-hidden">
+        <div class="dashboard-card-head">
+          <div><b>🧩 교체번호 자동 최적화</b><span>현재 유지와 1·2·3개 교체 결과를 함께 비교</span></div>
+          <button type="button" id="dashRunOptimizer">실행</button>
+        </div>
+        <div id="dashOptimizerResult" class="dashboard-placeholder">분석번호 6개를 입력한 뒤 실행하세요.</div>
+      </section>
+
+      <section id="dashBacktest" class="dashboard-card is-hidden">
+        <div class="dashboard-card-head">
+          <div><b>🧪 백테스트 요약</b><span>이전 데이터만 사용한 워크포워드 검증</span></div>
+          <button type="button" id="dashRunBacktest">실행</button>
+        </div>
+        <div id="dashBacktestResult" class="dashboard-placeholder">최근 50회 검증 결과를 이곳에서 확인합니다.</div>
+      </section>
+
+      <section id="dashQuick" class="dashboard-card is-hidden">
+        <div class="dashboard-card-head"><div><b>🔎 번호 빠른조회</b><span>번호 하나의 동반·추천·Fusion 위치를 즉시 확인</span></div></div>
+        <div class="dashboard-quick-form">
+          <input id="dashQuickNumber" type="number" min="1" max="45" inputmode="numeric" placeholder="1~45">
+          <button type="button" id="dashQuickSearch">조회</button>
+        </div>
+        <div id="dashQuickResult" class="dashboard-placeholder">조회할 번호를 입력하세요.</div>
+      </section>
+
+      <section class="dashboard-card dashboard-links">
+        <div class="dashboard-card-head"><div><b>상세 분석 바로가기</b><span>대시보드는 핵심 요약, 기존 페이지는 전체 근거</span></div></div>
+        <div class="dashboard-link-grid">
+          <a href="combo.html">조합분석 전체</a>
+          <a href="pattern.html">Pattern 연구</a>
+          <a href="validation.html">Validation</a>
+          <a href="backtest.html">Backtest</a>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- 기존 엔진이 요구하는 DOM. 화면에는 표시하지 않으며 기존 페이지 파일은 수정하지 않습니다. -->
+  <div id="dashboardLegacyHost" hidden aria-hidden="true">
+    <div class="combo-card">
+      <input id="comboInput">
+      <button id="analyzeBtn" type="button">분석</button>
+      <div class="combo-btn-row">
+        <button class="range-btn active" data-range="50">50</button>
+        <button class="range-btn" data-range="100">100</button>
+        <button class="range-btn" data-range="all">all</button>
+      </div>
+      <input type="checkbox" id="includeBonus" checked>
+    </div>
+    <div id="status"></div>
+    <div id="summary"></div>
+    <div id="companion"></div>
+    <div class="combo-section-title"><b>조합별 출현 이력</b></div>
+    <div id="history"></div>
+  </div>
+
+  <script src="js/interval_pattern_engine.js?v=v190-score-opt-preview1"></script>
+  <script src="js/combo.js?v=v190-score-opt-preview1"></script>
+  <script src="js/engines/companion-engine.js?v=v190-score-opt-preview1"></script>
+  <script src="js/engines/pattern-engine.js?v=v190-score-opt-preview1"></script>
+  <script src="js/engines/replay-engine.js?v=v190-score-opt-preview1"></script>
+  <script src="js/engines/flow-engine.js?v=v190-score-opt-preview1"></script>
+  <script src="js/engines/dream-engine.js?v=v190-score-opt-preview1"></script>
+  <script src="js/engines/ai-score-engine.js?v=v190-score-opt-preview1"></script>
+  <script src="js/engines/consensus-engine.js?v=v190-score-opt-preview1"></script>
+  <script src="js/ai-core.js?v=v190-score-opt-preview1"></script>
+  <script src="js/combo-ui.js?v=v190-score-opt-preview1"></script>
+  <script src="js/pattern-reference-engine.js?v=v190-score-opt-preview1"></script>
+  <script src="js/combo-premium-ui.js?v=v190-score-opt-preview1"></script>
+  <script src="js/engines/companion-combination-engine.js?v=v193-score-contribution1"></script>
+  <script src="js/companion-combination-ui.js?v=v193-score-contribution1"></script>
+  <script src="js/engines/score-fusion-engine.js?v=v100-fusion"></script>
+  <script src="js/score-fusion-ui.js?v=v100-fusion"></script>
+  <script src="js/dashboard-adapter.js?v=v200-dashboard-preview1"></script>
+  <script src="js/dashboard.js?v=v200-dashboard-preview1"></script>
+</body>
+</html>
