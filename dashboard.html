@@ -4,11 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#0f2f5f">
-  <title>행운로또 AI 대시보드</title>
+  <title>행운로또 AI 대시보드 v2.1</title>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="combo-ui.css?v=v193-score-contribution1">
   <link rel="stylesheet" href="score-fusion.css?v=v100-fusion">
-  <link rel="stylesheet" href="css/dashboard.css?v=v200-dashboard-preview1">
+  <link rel="stylesheet" href="css/dashboard.css?v=v210-candidate-reduction1">
 </head>
 <body class="dashboard-body">
   <div class="dashboard-app">
@@ -18,7 +18,7 @@
         <b>행운로또 AI 대시보드</b>
         <span>추천 · 동반패턴 · Fusion · 검증을 한 화면에서</span>
       </div>
-      <span class="dashboard-version">v2.0</span>
+      <span class="dashboard-version">v2.1</span>
     </header>
 
     <main>
@@ -56,6 +56,25 @@
           <button type="button" id="dashRunOptimizer">실행</button>
         </div>
         <div id="dashOptimizerResult" class="dashboard-placeholder">분석번호 6개를 입력한 뒤 실행하세요.</div>
+      </section>
+
+
+      <section id="candidateReduction" class="dashboard-card candidate-reduction-card">
+        <div class="dashboard-card-head">
+          <div><b>🔟 후보번호 10개 → 최종 6개</b><span>출현빈도 45% · 동반출현 45% · 연결 안정성 10%</span></div>
+          <button type="button" id="candidateReductionLoadSaved">저장후보</button>
+        </div>
+        <p class="candidate-reduction-guide">후보번호를 중복 없이 정확히 10개 입력하면 가능한 210개 조합을 모두 비교합니다.</p>
+        <input id="candidateReductionInput" class="dashboard-input" type="text" inputmode="text" enterkeyhint="done" placeholder="예: 5 8 9 16 19 25 28 33 41 42" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <div class="dashboard-scope" id="candidateReductionScope">
+          <button type="button" data-reduction-scope="50" class="active">최근 50회</button>
+          <button type="button" data-reduction-scope="100">최근 100회</button>
+          <button type="button" data-reduction-scope="all">전체</button>
+        </div>
+        <label class="dashboard-check"><input type="checkbox" id="candidateReductionBonus" checked> 보너스 번호 포함</label>
+        <button type="button" id="candidateReductionRun" class="dashboard-primary">최적 6개 찾기</button>
+        <p id="candidateReductionStatus" class="candidate-reduction-status">로또 데이터를 불러오는 중입니다.</p>
+        <div id="candidateReductionResult"></div>
       </section>
 
       <section id="dashBacktest" class="dashboard-card is-hidden">
@@ -123,7 +142,9 @@
   <script src="js/companion-combination-ui.js?v=v193-score-contribution1"></script>
   <script src="js/engines/score-fusion-engine.js?v=v100-fusion"></script>
   <script src="js/score-fusion-ui.js?v=v100-fusion"></script>
-  <script src="js/dashboard-adapter.js?v=v200-dashboard-preview1"></script>
-  <script src="js/dashboard.js?v=v200-dashboard-preview1"></script>
+  <script src="js/dashboard-adapter.js?v=v210-candidate-reduction1"></script>
+  <script src="js/engines/candidate-reduction-engine.js?v=v210-candidate-reduction1"></script>
+  <script src="js/candidate-reduction-ui.js?v=v210-candidate-reduction1"></script>
+  <script src="js/dashboard.js?v=v210-candidate-reduction1"></script>
 </body>
 </html>
