@@ -684,6 +684,7 @@
     state,defaults,aggregate,details,scopedRows,pool,choose,keyOf,
     bestWithCandidate,recommendationPatterns,strength,selectedNumsFromInput,requiredSelectedCount,indexForPattern,patternSetIndex,aiUsageForPattern,gradeForScore,
     scorePatternCombo:scorePatternComboV3,optimizePattern:optimizePatternV3,explainPatternRecommendation,
-    phase3Weights,scorePatternComboV3,optimizePatternV3,backtestPhase3
+    phase3Weights,scorePatternComboV3,optimizePatternV3,backtestPhase3,
+    clearOptimizerCache:()=>optimizerCache.clear()
   });
 })(window);

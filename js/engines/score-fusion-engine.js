@@ -139,6 +139,21 @@
     if(link)reasons.push(`핵심 동반 ${link.pair.join('·')} · ${link.count}회`);
     return reasons.slice(0,5);
   }
+
+  // v1.1 Reverse Inference support
+  // 현재 입력 조합(base)을 기준으로 기존 후보군과 함께 Classic 점수를 정규화한 뒤
+  // 임의의 6개 조합(nums)의 Fusion 점수를 동일 산식으로 평가합니다.
+  function evaluateCandidate(baseNums,nums){
+    const base=clean(baseNums),target=clean(nums);
+    if(base.length!==6||target.length!==6)return null;
+    const candidates=existingCandidates();
+    const extraKey=key(target);
+    if(!candidates.some(x=>key(x.nums)===extraKey))candidates.push({nums:target,rank:0,trust:0,parts:{},replace:base.filter(n=>!target.includes(n)).length});
+    const classic=classicDataset(base,candidates);
+    const item=classic.find(x=>key(x.nums)===extraKey) || classic[0];
+    return item?calculateOne(base,item):null;
+  }
+
   function analyze(){
     const base=currentSelection();
     if(base.length!==6)return {error:'Fusion 분석은 번호 6개 입력 후 사용할 수 있습니다.'};
@@ -157,5 +172,5 @@
     };
   }
 
-  global.ScoreFusionEngine=Object.freeze({WEIGHTS,analyze,frequencyMetrics,patternMetrics,currentSelection});
+  global.ScoreFusionEngine=Object.freeze({WEIGHTS,analyze,evaluateCandidate,frequencyMetrics,patternMetrics,currentSelection});
 })(window);
