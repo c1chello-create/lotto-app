@@ -13,6 +13,16 @@
   const average = list => list.length ? list.reduce((sum,v)=>sum+(Number(v)||0),0)/list.length : 0;
   const pairKey = (a,b) => a<b ? `${a}-${b}` : `${b}-${a}`;
 
+
+  function combinationCount(n,r){
+    n=Number(n)||0;r=Number(r)||0;
+    if(r<0||n<r)return 0;
+    r=Math.min(r,n-r);
+    let out=1;
+    for(let i=1;i<=r;i++)out=out*(n-r+i)/i;
+    return Math.round(out);
+  }
+
   function combinations(items,size){
     const result=[];
     function walk(start,picked){
@@ -127,8 +137,8 @@
     const nums=clean(candidates);
     const scope=String(options.scope||'50');
     const includeBonus=options.includeBonus!==false;
-    if(nums.length!==10){
-      return {error:`후보번호는 중복 없이 정확히 10개가 필요합니다. 현재 ${nums.length}개입니다.`,candidates:nums};
+    if(nums.length<10||nums.length>12){
+      return {error:`후보번호는 중복 없이 10개 이상 12개 이하가 필요합니다. 현재 ${nums.length}개입니다.`,candidates:nums};
     }
 
     const rows=scopedRows(scope);
@@ -205,6 +215,6 @@
   }
 
   global.CandidateReductionEngine=Object.freeze({
-    WEIGHTS,clean,combinations,analyze,clearCache:()=>cache.clear()
+    WEIGHTS,clean,combinations,combinationCount,analyze,clearCache:()=>cache.clear()
   });
 })(window);
