@@ -54,7 +54,7 @@
         <div class="candidate-result-score"><b>${best.total.toFixed(1)}</b><span>후보 압축점수</span><em>${scopeText} · ${result.includeBonus?'보너스 포함':'보너스 제외'}</em></div>
       </div>
       <div class="candidate-score-grid">
-        ${scoreMetric('출현빈도',best.frequencyScore,45,'후보 10개 안의 상대 출현 강도')}
+        ${scoreMetric('출현빈도',best.frequencyScore,45,`후보 ${result.candidates.length}개 안의 상대 출현 강도`)}
         ${scoreMetric('동반출현',best.coOccurrenceScore,45,'최종 6개에서 가능한 15개 번호쌍')}
         ${scoreMetric('연결 안정성',best.stabilityScore,10,'일부 강한 쌍에만 치우치는 현상 보정')}
       </div>
@@ -72,7 +72,7 @@
         <div class="candidate-frequency-list">${frequencyRows(result)}</div>
       </div>
       <div class="candidate-subsection">
-        <div class="dashboard-section-title"><b>강한 동반출현 번호쌍</b><span>후보 10개 내부</span></div>
+        <div class="dashboard-section-title"><b>강한 동반출현 번호쌍</b><span>후보 ${result.candidates.length}개 내부</span></div>
         <div class="candidate-link-list">${result.strongestCandidateLinks.slice(0,6).map(x=>`<span class="dashboard-tag info">${x.a}·${x.b} ${x.count}회</span>`).join('')||'<span class="dashboard-placeholder">동반출현 기록이 없습니다.</span>'}</div>
         ${links.length?`<p class="candidate-note">최종 6개 핵심 연결: ${links.map(x=>`${x.a}·${x.b} ${x.count}회`).join(' · ')}</p>`:''}
       </div>
@@ -80,18 +80,18 @@
         <summary>선정·제외 근거 자세히 보기</summary>
         <div class="candidate-reason-list">${selectedReasons(result)}${excludedReasons(result)}</div>
       </details>
-      <p class="candidate-footnote">※ 점수는 입력한 후보 10개 안에서 비교한 상대점수입니다. 당첨 확률을 뜻하지 않습니다.</p>`;
+      <p class="candidate-footnote">※ 점수는 입력한 후보 ${result.candidates.length}개 안에서 비교한 상대점수입니다. 당첨 확률을 뜻하지 않습니다.</p>`;
 
     $('candidateApplyToDashboard')?.addEventListener('click',applyBest);
     status(`분석 완료 · ${result.totalCombinations}개 조합 비교 · 최신 ${result.latestRound}회`,'success');
-    localStorage.setItem('haengun_candidate_10',JSON.stringify(result.candidates));
+    localStorage.setItem('haengun_candidate_10_12',JSON.stringify(result.candidates));
   }
 
   function analyze(){
     const engine=global.CandidateReductionEngine;
     const candidates=parseCandidates();
-    if(candidates.length!==10){
-      status(`후보번호는 중복 없이 정확히 10개를 입력하세요. 현재 ${candidates.length}개입니다.`,'error');
+    if(candidates.length<10||candidates.length>12){
+      status(`후보번호는 중복 없이 10~12개를 입력하세요. 현재 ${candidates.length}개입니다.`,'error');
       $('candidateReductionResult').innerHTML='';
       return;
     }
@@ -101,7 +101,8 @@
     }
     const button=$('candidateReductionRun');
     button.disabled=true;
-    button.textContent='210개 조합 계산 중';
+    const comboCount=engine.combinationCount?engine.combinationCount(candidates.length,6):engine.combinations(candidates,6).length;
+    button.textContent=`${comboCount}개 조합 계산 중`;
     status('출현빈도·동반출현·연결 안정성을 계산하고 있습니다.');
     setTimeout(()=>{
       try{
@@ -135,14 +136,14 @@
 
   function loadSaved(){
     try{
-      const saved=JSON.parse(localStorage.getItem('haengun_candidate_10')||'null');
-      if(Array.isArray(saved)&&saved.length===10)$('candidateReductionInput').value=saved.join(' ');
+      const saved=JSON.parse(localStorage.getItem('haengun_candidate_10_12')||localStorage.getItem('haengun_candidate_10')||'null');
+      if(Array.isArray(saved)&&saved.length>=10&&saved.length<=12)$('candidateReductionInput').value=saved.join(' ');
     }catch(error){}
   }
 
   function waitForData(){
     if((global.LOTTO_DATA||[]).length){
-      status(`전체 ${global.LOTTO_DATA.length}개 회차 준비 완료 · 후보 10개를 입력하세요.`);
+      status(`전체 ${global.LOTTO_DATA.length}개 회차 준비 완료 · 후보 10~12개를 입력하세요.`);
       return;
     }
     setTimeout(waitForData,180);
