@@ -84,14 +84,14 @@
 
     $('candidateApplyToDashboard')?.addEventListener('click',applyBest);
     status(`분석 완료 · ${result.totalCombinations}개 조합 비교 · 최신 ${result.latestRound}회`,'success');
-    localStorage.setItem('haengun_candidate_10_12',JSON.stringify(result.candidates));
+    localStorage.setItem('haengun_candidate_10_15',JSON.stringify(result.candidates));
   }
 
   function analyze(){
     const engine=global.CandidateReductionEngine;
     const candidates=parseCandidates();
-    if(candidates.length<10||candidates.length>12){
-      status(`후보번호는 중복 없이 10~12개를 입력하세요. 현재 ${candidates.length}개입니다.`,'error');
+    if(candidates.length<10||candidates.length>15){
+      status(`후보번호는 중복 없이 10~15개를 입력하세요. 현재 ${candidates.length}개입니다.`,'error');
       $('candidateReductionResult').innerHTML='';
       return;
     }
@@ -136,14 +136,14 @@
 
   function loadSaved(){
     try{
-      const saved=JSON.parse(localStorage.getItem('haengun_candidate_10_12')||localStorage.getItem('haengun_candidate_10')||'null');
-      if(Array.isArray(saved)&&saved.length>=10&&saved.length<=12)$('candidateReductionInput').value=saved.join(' ');
+      const saved=JSON.parse(localStorage.getItem('haengun_candidate_10_15')||localStorage.getItem('haengun_candidate_10_12')||localStorage.getItem('haengun_candidate_10')||'null');
+      if(Array.isArray(saved)&&saved.length>=10&&saved.length<=15)$('candidateReductionInput').value=saved.join(' ');
     }catch(error){}
   }
 
   function waitForData(){
     if((global.LOTTO_DATA||[]).length){
-      status(`전체 ${global.LOTTO_DATA.length}개 회차 준비 완료 · 후보 10~12개를 입력하세요.`);
+      status(`전체 ${global.LOTTO_DATA.length}개 회차 준비 완료 · 후보 10~15개를 입력하세요.`);
       return;
     }
     setTimeout(waitForData,180);
