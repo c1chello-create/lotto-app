@@ -98,11 +98,55 @@
     const map=new Map();items.forEach(x=>{const k=key(x.nums);const old=map.get(k);if(!old||compare(x,old)<0)map.set(k,x);});
     return [...map.values()].sort(compare);
   }
+  function candidateNumberStats(base,stage){
+    const stats=new Map();
+    stage.forEach((x,idx)=>x.added.forEach(n=>{
+      const v=stats.get(n)||{n,count:0,bestScore:0,sumScore:0,bestDelta:-999,sumDelta:0,bestRank:999,raw:0};
+      v.count++;
+      v.bestScore=Math.max(v.bestScore,Number(x.after)||0);
+      v.sumScore+=Number(x.after)||0;
+      v.bestDelta=Math.max(v.bestDelta,Number(x.delta)||0);
+      v.sumDelta+=Number(x.delta)||0;
+      v.bestRank=Math.min(v.bestRank,idx+1);
+      v.raw+=(Math.max(0,(Number(x.after)||0)-50)*2)+Math.max(0,Number(x.delta)||0)*4+Math.max(0,40-idx);
+      stats.set(n,v);
+    }));
+    return [...stats.values()].map(v=>({
+      ...v,
+      avgScore:v.count?v.sumScore/v.count:0,
+      avgDelta:v.count?v.sumDelta/v.count:0
+    })).sort((a,b)=>b.raw-a.raw||b.count-a.count||b.bestScore-a.bestScore||b.bestDelta-a.bestDelta||a.n-b.n);
+  }
   function candidateNumbersFromStage(base,stage){
-    const scores=new Map();
-    stage.forEach((x,idx)=>x.added.forEach(n=>scores.set(n,(scores.get(n)||0)+(Math.max(0,x.after-50)*2)+Math.max(0,x.delta)*4+Math.max(0,40-idx))));
-    for(let n=1;n<=45;n++)if(!base.includes(n)&&!scores.has(n))scores.set(n,0);
-    return [...scores.entries()].sort((a,b)=>b[1]-a[1]||a[0]-b[0]).map(x=>x[0]);
+    const ranked=candidateNumberStats(base,stage).map(x=>x.n);
+    for(let n=1;n<=45;n++)if(!base.includes(n)&&!ranked.includes(n))ranked.push(n);
+    return ranked;
+  }
+  function compressCandidatePool(base,stage,minKeep=8,maxKeep=12){
+    const ranked=candidateNumberStats(base,stage);
+    if(!ranked.length)return {nums:[],core:[],support:[],details:[],threshold:0};
+    const maxRaw=Math.max(1,ranked[0].raw);
+    const details=ranked.map((v,idx)=>({
+      ...v,
+      normalized:Math.round((v.raw/maxRaw)*1000)/10,
+      rank:idx+1
+    }));
+    const baseCount=Math.min(minKeep,details.length);
+    let keep=baseCount;
+    const anchor=details[Math.max(0,baseCount-1)]?.normalized||0;
+    while(keep<Math.min(maxKeep,details.length)){
+      const cur=details[keep];
+      const prev=details[keep-1];
+      const nearAnchor=cur.normalized>=anchor*0.85;
+      const smallGap=(prev.normalized-cur.normalized)<=6;
+      const strongRepeat=cur.count>=Math.max(2,Math.floor((details[0].count||1)*0.45));
+      if(!(nearAnchor||smallGap||strongRepeat))break;
+      keep++;
+    }
+    const chosen=details.slice(0,keep);
+    const core=chosen.slice(0,Math.min(8,chosen.length)).map(x=>x.n);
+    const support=chosen.slice(8).map(x=>x.n);
+    return {nums:chosen.map(x=>x.n),core,support,details:chosen,threshold:anchor};
   }
 
   async function stageOne(base,target,cutoff,cache,onProgress){
@@ -130,7 +174,7 @@
   async function expand(base,seeds,addPool,target,cutoff,cache,depth,onProgress){
     const out=[];const seen=new Set();let ops=0,pruned=0;
     const seedLimit=depth===2?36:40;
-    const addLimit=depth===2?14:10;
+    const addLimit=Math.min(addPool.length,depth===2?12:10);
     const survivedNumbers=new Set();
     for(const seed of seeds.slice(0,seedLimit)){
       const removable=base.filter(n=>seed.nums.includes(n));
@@ -186,17 +230,20 @@
       const stages=[{replaceCount:1,best:one[0]||null,count:oneResult.stats.evaluated,kept:oneResult.stats.survived,pruned:oneResult.stats.pruned,numberCount:oneResult.stats.survivedNumbers,met:one.filter(x=>x.targetMet).length}];
       let pool=one;
       let met=one.filter(x=>x.targetMet);
-      let addPool=candidateNumbersFromStage(base,one);
+      const shortlist1=compressCandidatePool(base,one,8,12);
+      let shortlist2=null;
+      let addPool=shortlist1.nums.length?shortlist1.nums:candidateNumbersFromStage(base,one).slice(0,8);
 
       if(!met.length&&maxReplace>=2&&one.length){
-        onProgress(`2단계는 1단계 생존 번호군 ${oneResult.stats.survivedNumbers}개 중심으로 계산합니다...`);
+        onProgress(`2차 압축 ${addPool.length}개(핵심 ${shortlist1.core.length} + 보조 ${shortlist1.support.length})로 2단계 정밀 계산합니다...`);
         const twoResult=await expand(base,one,addPool,target,cutoff,cache,2,onProgress);
         const two=twoResult.items;
         stages.push({replaceCount:2,best:two[0]||null,count:twoResult.stats.evaluated,kept:twoResult.stats.survived,pruned:twoResult.stats.pruned,numberCount:twoResult.stats.survivedNumbers,met:two.filter(x=>x.targetMet).length});
         pool=two;met=two.filter(x=>x.targetMet);
         if(!met.length&&maxReplace>=3&&two.length){
-          const pool3=candidateNumbersFromStage(base,two);
-          onProgress(`3단계는 2단계 생존 후보만 정밀 계산합니다...`);
+          shortlist2=compressCandidatePool(base,two,8,12);
+          const pool3=shortlist2.nums.length?shortlist2.nums:candidateNumbersFromStage(base,two).slice(0,8);
+          onProgress(`3단계는 2단계 결과를 다시 ${pool3.length}개로 압축해 정밀 계산합니다...`);
           const threeResult=await expand(base,two,pool3,target,cutoff,cache,3,onProgress);
           const three=threeResult.items;
           stages.push({replaceCount:3,best:three[0]||null,count:threeResult.stats.evaluated,kept:threeResult.stats.survived,pruned:threeResult.stats.pruned,numberCount:threeResult.stats.survivedNumbers,met:three.filter(x=>x.targetMet).length});
@@ -219,9 +266,14 @@
       const result={
         base,target,cutoff,maxReplace,baseline,sameVirtual,best,top,stages,
         reached:!!reachedStage,reachedReplace:reachedStage?.replaceCount||null,
-        inferred:inferredNumbers(inferenceSource),
+        inferred:inferredNumbers(inferenceSource,12),
+        shortlist:{
+          stage1:shortlist1,
+          stage2:shortlist2,
+          active:(shortlist2&&shortlist2.nums.length)?shortlist2:shortlist1
+        },
         virtualRound:nextRound(),totals,
-        note:`Fusion 계산식은 변경하지 않았습니다. ${cutoff}점은 연산 중단용 생존 커트라인이며, Classic·동반빈도·유지율을 정확히 계산한 뒤 Pattern이 100점을 받아도 ${cutoff}점에 못 미치는 후보만 제외합니다.`
+        note:`Fusion 계산식은 변경하지 않았습니다. ${cutoff}점은 연산 중단용 생존 커트라인이며, Classic·동반빈도·유지율을 정확히 계산한 뒤 Pattern이 100점을 받아도 ${cutoff}점에 못 미치는 후보만 제외합니다. 생존 번호가 많으면 2차 압축에서 핵심 8개와 점수차가 작은 보조 후보 최대 4개만 남겨 정밀 역산합니다.`
       };
       state.last=result;return result;
     }catch(e){console.error('ReverseInferenceEngine',e);return {error:e.message||String(e)};}
