@@ -137,8 +137,8 @@
     const nums=clean(candidates);
     const scope=String(options.scope||'50');
     const includeBonus=options.includeBonus!==false;
-    if(nums.length<10||nums.length>12){
-      return {error:`후보번호는 중복 없이 10개 이상 12개 이하가 필요합니다. 현재 ${nums.length}개입니다.`,candidates:nums};
+    if(nums.length<10||nums.length>15){
+      return {error:`후보번호는 중복 없이 10개 이상 15개 이하가 필요합니다. 현재 ${nums.length}개입니다.`,candidates:nums};
     }
 
     const rows=scopedRows(scope);
