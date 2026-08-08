@@ -29,7 +29,6 @@
   function withVirtualDraw(nums,fn){
     const all=rows();
     const row=virtualRow(nums);
-    // lottoData는 최신 회차가 앞에 정렬되어 있으므로 같은 배열에 임시 삽입합니다.
     all.unshift(row);
     invalidate();
     try{return fn(row);}finally{
@@ -37,14 +36,45 @@
       invalidate();
     }
   }
-  function evaluateReal(base,nums){
+  function scopeSignature(){
+    let scope='50',bonus='B';
+    try{scope=global.document?.querySelector('.range-btn.active')?.dataset?.range||'50';}catch(e){}
+    try{bonus=global.document?.getElementById('includeBonus')?.checked===false?'N':'B';}catch(e){}
+    return `${scope}|${bonus}|${rows().length}`;
+  }
+  function createRunCache(base,cutoff){
+    const sig=scopeSignature();
+    return {base:key(base),cutoff,sig,real:new Map(),virtual:new Map(),gate:new Map()};
+  }
+  function cacheKey(cache,nums){return `${cache.base}|${key(nums)}|${cache.sig}`;}
+
+  function evaluateReal(base,nums,cache){
+    const k=cache?cacheKey(cache,nums):null;
+    if(cache&&cache.real.has(k))return cache.real.get(k);
     invalidate();
-    return global.ScoreFusionEngine?.evaluateCandidate?.(base,nums)||null;
+    const result=global.ScoreFusionEngine?.evaluateCandidate?.(base,nums)||null;
+    if(cache)cache.real.set(k,result);
+    return result;
   }
-  function evaluateVirtual(base,nums){
-    return withVirtualDraw(nums,()=>global.ScoreFusionEngine?.evaluateCandidate?.(base,nums)||null);
+  function evaluateVirtualGate(base,nums,cutoff,cache){
+    const k=cache?`${cacheKey(cache,nums)}|C${cutoff}`:null;
+    if(cache&&cache.gate.has(k))return cache.gate.get(k);
+    const result=withVirtualDraw(nums,()=>{
+      if(typeof global.ScoreFusionEngine?.evaluateCandidateGate==='function')return global.ScoreFusionEngine.evaluateCandidateGate(base,nums,cutoff);
+      const full=global.ScoreFusionEngine?.evaluateCandidate?.(base,nums)||null;
+      return full?{...full,pruned:false,upperBound:full.total}:null;
+    });
+    if(cache)cache.gate.set(k,result);
+    return result;
   }
-  function decorate(base,nums,real,virtual,replaceCount){
+  function evaluateVirtualFull(base,nums,cache){
+    const k=cache?cacheKey(cache,nums):null;
+    if(cache&&cache.virtual.has(k))return cache.virtual.get(k);
+    const result=withVirtualDraw(nums,()=>global.ScoreFusionEngine?.evaluateCandidate?.(base,nums)||null);
+    if(cache)cache.virtual.set(k,result);
+    return result;
+  }
+  function decorate(base,nums,real,virtual,replaceCount,extra={}){
     const removed=base.filter(n=>!nums.includes(n));
     const added=nums.filter(n=>!base.includes(n));
     return {
@@ -52,14 +82,15 @@
       real,virtual,
       before:real?.total||0,after:virtual?.total||0,
       delta:(virtual?.total||0)-(real?.total||0),
-      targetMet:false
+      targetMet:false,
+      ...extra
     };
   }
   function compare(a,b){
     return Number(b.targetMet)-Number(a.targetMet)
       || b.after-a.after
       || b.delta-a.delta
-      || b.virtual?.pattern?.confidence-a.virtual?.pattern?.confidence
+      || (b.virtual?.pattern?.confidence||0)-(a.virtual?.pattern?.confidence||0)
       || a.replaceCount-b.replaceCount
       || key(a.nums).localeCompare(key(b.nums),undefined,{numeric:true});
   }
@@ -74,25 +105,33 @@
     return [...scores.entries()].sort((a,b)=>b[1]-a[1]||a[0]-b[0]).map(x=>x[0]);
   }
 
-  async function stageOne(base,target,onProgress){
-    const out=[];let done=0,total=base.length*(45-base.length);
+  async function stageOne(base,target,cutoff,cache,onProgress){
+    const out=[];let done=0,pruned=0,total=base.length*(45-base.length);const survivedNumbers=new Set();
     for(const remove of base){
       for(let add=1;add<=45;add++){
         if(base.includes(add))continue;
         const nums=clean(base.filter(n=>n!==remove).concat(add));
-        const real=evaluateReal(base,nums);
-        const virtual=evaluateVirtual(base,nums);
-        const item=decorate(base,nums,real,virtual,1);item.targetMet=item.after>=target;out.push(item);
-        done++;if(done%12===0){onProgress?.(`+1회 역산 1단계 ${done}/${total}`);await sleep();}
+        const virtual=evaluateVirtualGate(base,nums,cutoff,cache);
+        done++;
+        if(!virtual||virtual.pruned){
+          pruned++;
+        }else{
+          survivedNumbers.add(add);
+          const real=evaluateReal(base,nums,cache);
+          const item=decorate(base,nums,real,virtual,1,{upperBound:virtual.upperBound});
+          item.targetMet=item.after>=target;out.push(item);
+        }
+        if(done%10===0){onProgress?.(`1단계 ${done}/${total} · ${cutoff}점 생존 ${out.length} · 제외 ${pruned}`);await sleep();}
       }
     }
-    return dedupe(out);
+    return {items:dedupe(out),stats:{evaluated:done,pruned,survived:out.length,survivedNumbers:survivedNumbers.size}};
   }
 
-  async function expand(base,seeds,addPool,target,depth,onProgress){
-    const out=[];const seen=new Set();let ops=0;
-    const seedLimit=depth===2?48:54;
-    const addLimit=depth===2?22:16;
+  async function expand(base,seeds,addPool,target,cutoff,cache,depth,onProgress){
+    const out=[];const seen=new Set();let ops=0,pruned=0;
+    const seedLimit=depth===2?36:40;
+    const addLimit=depth===2?14:10;
+    const survivedNumbers=new Set();
     for(const seed of seeds.slice(0,seedLimit)){
       const removable=base.filter(n=>seed.nums.includes(n));
       for(const remove of removable){
@@ -101,14 +140,19 @@
           const nums=clean(seed.nums.filter(n=>n!==remove).concat(add));
           if(nums.length!==6||base.filter(n=>!nums.includes(n)).length!==depth)continue;
           const k=key(nums);if(seen.has(k))continue;seen.add(k);
-          const real=evaluateReal(base,nums);
-          const virtual=evaluateVirtual(base,nums);
-          const item=decorate(base,nums,real,virtual,depth);item.targetMet=item.after>=target;out.push(item);
-          ops++;if(ops%12===0){onProgress?.(`+1회 역산 ${depth}단계 ${out.length}개 후보`);await sleep();}
+          const virtual=evaluateVirtualGate(base,nums,cutoff,cache);
+          ops++;
+          if(!virtual||virtual.pruned){pruned++;}
+          else{
+            virtual.added?.forEach?.(n=>survivedNumbers.add(n));
+            const real=evaluateReal(base,nums,cache);
+            const item=decorate(base,nums,real,virtual,depth,{upperBound:virtual.upperBound});item.targetMet=item.after>=target;out.push(item);
+          }
+          if(ops%10===0){onProgress?.(`${depth}단계 ${ops}개 검사 · ${cutoff}점 생존 ${out.length} · 제외 ${pruned}`);await sleep();}
         }
       }
     }
-    return dedupe(out);
+    return {items:dedupe(out),stats:{evaluated:ops,pruned,survived:out.length,survivedNumbers:survivedNumbers.size}};
   }
 
   function inferredNumbers(items,limit=10){
@@ -124,54 +168,65 @@
     if(state.running)return {error:'이미 역산 분석을 실행 중입니다.'};
     const base=clean(opts.base||baseSelection());
     if(base.length!==6)return {error:'역산 분석은 번호 6개가 필요합니다.'};
-    if(!global.ScoreFusionEngine?.evaluateCandidate)return {error:'ScoreFusionEngine v1.1 연결이 필요합니다.'};
+    if(!global.ScoreFusionEngine?.evaluateCandidate)return {error:'ScoreFusionEngine 연결이 필요합니다.'};
     const target=Math.max(60,Math.min(98,Number(opts.target)||90));
+    const cutoff=Math.max(60,Math.min(target,Number(opts.cutoff)||80));
     const maxReplace=Math.max(1,Math.min(3,Number(opts.maxReplace)||2));
     const onProgress=typeof opts.onProgress==='function'?opts.onProgress:()=>{};
+    const cache=createRunCache(base,cutoff);
     state.running=true;
     try{
       onProgress('현재 Fusion AI Score를 계산하고 있습니다...');
-      const baseline=evaluateReal(base,base);
-      const sameVirtual=evaluateVirtual(base,base);
-      let one=await stageOne(base,target,onProgress);
-      const stages=[{replaceCount:1,best:one[0]||null,count:one.length,met:one.filter(x=>x.targetMet).length}];
+      const baseline=evaluateReal(base,base,cache);
+      const sameVirtual=evaluateVirtualFull(base,base,cache);
+
+      onProgress(`1단계 후보를 ${cutoff}점 생존 커트라인으로 선별합니다...`);
+      const oneResult=await stageOne(base,target,cutoff,cache,onProgress);
+      const one=oneResult.items;
+      const stages=[{replaceCount:1,best:one[0]||null,count:oneResult.stats.evaluated,kept:oneResult.stats.survived,pruned:oneResult.stats.pruned,numberCount:oneResult.stats.survivedNumbers,met:one.filter(x=>x.targetMet).length}];
       let pool=one;
       let met=one.filter(x=>x.targetMet);
-      const addPool=candidateNumbersFromStage(base,one);
-      if(!met.length&&maxReplace>=2){
-        const two=await expand(base,one,addPool,target,2,onProgress);
-        stages.push({replaceCount:2,best:two[0]||null,count:two.length,met:two.filter(x=>x.targetMet).length});
+      let addPool=candidateNumbersFromStage(base,one);
+
+      if(!met.length&&maxReplace>=2&&one.length){
+        onProgress(`2단계는 1단계 생존 번호군 ${oneResult.stats.survivedNumbers}개 중심으로 계산합니다...`);
+        const twoResult=await expand(base,one,addPool,target,cutoff,cache,2,onProgress);
+        const two=twoResult.items;
+        stages.push({replaceCount:2,best:two[0]||null,count:twoResult.stats.evaluated,kept:twoResult.stats.survived,pruned:twoResult.stats.pruned,numberCount:twoResult.stats.survivedNumbers,met:two.filter(x=>x.targetMet).length});
         pool=two;met=two.filter(x=>x.targetMet);
-        if(!met.length&&maxReplace>=3){
-          const pool3=candidateNumbersFromStage(base,two.length?two:one);
-          const three=await expand(base,two.length?two:one,pool3,target,3,onProgress);
-          stages.push({replaceCount:3,best:three[0]||null,count:three.length,met:three.filter(x=>x.targetMet).length});
+        if(!met.length&&maxReplace>=3&&two.length){
+          const pool3=candidateNumbersFromStage(base,two);
+          onProgress(`3단계는 2단계 생존 후보만 정밀 계산합니다...`);
+          const threeResult=await expand(base,two,pool3,target,cutoff,cache,3,onProgress);
+          const three=threeResult.items;
+          stages.push({replaceCount:3,best:three[0]||null,count:threeResult.stats.evaluated,kept:threeResult.stats.survived,pruned:threeResult.stats.pruned,numberCount:threeResult.stats.survivedNumbers,met:three.filter(x=>x.targetMet).length});
           pool=three;met=three.filter(x=>x.targetMet);
         }
       }
-      // 가장 적은 교체로 목표를 달성한 단계만 최적해 후보로 사용합니다.
+
       const reachedStage=stages.find(s=>s.met>0);
       let finalPool;
       if(reachedStage){
-        const src=reachedStage.replaceCount===1?one:pool;
-        finalPool=src.filter(x=>x.targetMet).sort(compare);
+        const stageItems=reachedStage.replaceCount===1?one:pool;
+        finalPool=stageItems.filter(x=>x.targetMet).sort(compare);
       }else{
         finalPool=stages.map(s=>s.best).filter(Boolean).sort(compare);
       }
       const best=finalPool[0]||null;
       const top=finalPool.slice(0,10);
       const inferenceSource=(met.length?met:pool).slice(0,80);
+      const totals=stages.reduce((a,s)=>({evaluated:a.evaluated+s.count,kept:a.kept+s.kept,pruned:a.pruned+s.pruned}),{evaluated:0,kept:0,pruned:0});
       const result={
-        base,target,maxReplace,baseline,sameVirtual,best,top,stages,
+        base,target,cutoff,maxReplace,baseline,sameVirtual,best,top,stages,
         reached:!!reachedStage,reachedReplace:reachedStage?.replaceCount||null,
         inferred:inferredNumbers(inferenceSource),
-        virtualRound:nextRound(),
-        note:'실제 lotto.json은 수정하지 않고 메모리에서 후보 6개가 다음 회차에 1회 출현했다고 가정해 Fusion AI를 다시 계산합니다.'
+        virtualRound:nextRound(),totals,
+        note:`Fusion 계산식은 변경하지 않았습니다. ${cutoff}점은 연산 중단용 생존 커트라인이며, Classic·동반빈도·유지율을 정확히 계산한 뒤 Pattern이 100점을 받아도 ${cutoff}점에 못 미치는 후보만 제외합니다.`
       };
       state.last=result;return result;
     }catch(e){console.error('ReverseInferenceEngine',e);return {error:e.message||String(e)};}
     finally{state.running=false;invalidate();}
   }
 
-  global.ReverseInferenceEngine=Object.freeze({run,getState:()=>({...state}),evaluateReal,evaluateVirtual});
+  global.ReverseInferenceEngine=Object.freeze({run,getState:()=>({...state}),evaluateReal,evaluateVirtualFull});
 })(window);

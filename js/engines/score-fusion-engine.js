@@ -140,18 +140,59 @@
     return reasons.slice(0,5);
   }
 
-  // v1.1 Reverse Inference support
-  // 현재 입력 조합(base)을 기준으로 기존 후보군과 함께 Classic 점수를 정규화한 뒤
-  // 임의의 6개 조합(nums)의 Fusion 점수를 동일 산식으로 평가합니다.
-  function evaluateCandidate(baseNums,nums){
-    const base=clean(baseNums),target=clean(nums);
-    if(base.length!==6||target.length!==6)return null;
+  // v1.2 Reverse Inference Fast support
+  // 최종 Fusion 계산식은 그대로 유지합니다.
+  // Fast Gate는 Pattern을 계산하기 전에 Classic/Frequency/Preservation을 정확히 계산하고,
+  // 남은 Pattern이 이론상 100점을 받더라도 cutoff에 못 미치는 후보만 조기 제외합니다.
+  function candidateClassicItem(base,target){
     const candidates=existingCandidates();
     const extraKey=key(target);
     if(!candidates.some(x=>key(x.nums)===extraKey))candidates.push({nums:target,rank:0,trust:0,parts:{},replace:base.filter(n=>!target.includes(n)).length});
     const classic=classicDataset(base,candidates);
-    const item=classic.find(x=>key(x.nums)===extraKey) || classic[0];
-    return item?calculateOne(base,item):null;
+    return classic.find(x=>key(x.nums)===extraKey) || classic[0] || null;
+  }
+
+  function evaluateCandidateGate(baseNums,nums,cutoff=80){
+    const base=clean(baseNums),target=clean(nums);
+    if(base.length!==6||target.length!==6)return null;
+    const item=candidateClassicItem(base,target);
+    if(!item)return null;
+
+    const frequency=frequencyMetrics(target);
+    const preservation=preservationScore(base,target);
+    const classicContribution=Number((item.classic*WEIGHTS.classic/100).toFixed(1));
+    const frequencyContribution=Number((frequency.score*WEIGHTS.frequency/100).toFixed(1));
+    const preservationContribution=Number((preservation*WEIGHTS.preservation/100).toFixed(1));
+    const maxPatternContribution=WEIGHTS.pattern; // Pattern 100점의 최대 기여 = 20점
+    const upperBound=Number((classicContribution+frequencyContribution+preservationContribution+maxPatternContribution).toFixed(1));
+    const kept=target.filter(n=>base.includes(n));
+    const added=target.filter(n=>!base.includes(n));
+    const removed=base.filter(n=>!target.includes(n));
+
+    if(upperBound<Number(cutoff||80)){
+      return {
+        ...item,nums:target,frequency,preservation,kept,added,removed,replaceCount:removed.length,
+        pruned:true,upperBound,cutoff:Number(cutoff||80),
+        contributions:{classic:classicContribution,pattern:null,frequency:frequencyContribution,preservation:preservationContribution},
+        total:null
+      };
+    }
+
+    // Gate를 통과한 후보만 기존 Pattern을 계산하고 원래 Fusion 산식으로 최종 점수를 계산합니다.
+    const pattern=patternMetrics(target)||{strength:0,confidence:0,adjusted:0,components:{},confidenceParts:{}};
+    const contributions={
+      classic:classicContribution,
+      pattern:Number((pattern.adjusted*WEIGHTS.pattern/100).toFixed(1)),
+      frequency:frequencyContribution,
+      preservation:preservationContribution
+    };
+    const total=clamp(Object.values(contributions).reduce((sum,v)=>sum+(Number(v)||0),0));
+    return {...item,nums:target,pattern,frequency,preservation,contributions,total,kept,added,removed,replaceCount:removed.length,pruned:false,upperBound,cutoff:Number(cutoff||80)};
+  }
+
+  function evaluateCandidate(baseNums,nums){
+    const result=evaluateCandidateGate(baseNums,nums,0);
+    return result&&result.pruned?null:result;
   }
 
   function analyze(){
@@ -172,5 +213,5 @@
     };
   }
 
-  global.ScoreFusionEngine=Object.freeze({WEIGHTS,analyze,evaluateCandidate,frequencyMetrics,patternMetrics,currentSelection});
+  global.ScoreFusionEngine=Object.freeze({WEIGHTS,analyze,evaluateCandidate,evaluateCandidateGate,frequencyMetrics,patternMetrics,currentSelection});
 })(window);
