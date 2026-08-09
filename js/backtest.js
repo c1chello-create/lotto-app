@@ -18,8 +18,10 @@ function formatUserNums(value){
 }
 const userInput=$('userNums');
 userInput.addEventListener('input',()=>{
-  const before=userInput.value,after=formatUserNums(before);
-  if(before!==after)userInput.value=after;
+  // 입력 중에는 공백/쉼표를 그대로 유지합니다.
+  // 매 입력마다 formatUserNums()를 적용하면 iPhone에서 끝 공백이 즉시 제거되어
+  // 다음 번호를 띄어써서 입력할 수 없습니다.
+  userInput.value=String(userInput.value||'').replace(/[^0-9,\s]/g,'');
 });
 userInput.addEventListener('blur',()=>{userInput.value=formatUserNums(userInput.value)});
 function opts(){return{data,round:Number($('roundSelect').value),userNums:userInput.value,dreamKeyword:$('dreamKeyword').value,scope:$('scopeSelect').value,includeBonus:$('includeBonus').checked}}
