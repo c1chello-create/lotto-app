@@ -5,6 +5,18 @@
   const ball=n=>`<span class="ball small-ball ${cls(Number(n))}">${n}</span>`;
   let DATA=[];
 
+  function enableTextBaseInput(){
+    const input=$('valBase');
+    if(!input)return;
+    // iPhone에서 숫자 전용 키패드 대신 일반 텍스트 키보드를 사용해
+    // '6 7 11 15 39 43'처럼 공백으로 번호를 구분할 수 있게 합니다.
+    input.type='text';
+    input.setAttribute('inputmode','text');
+    input.setAttribute('autocomplete','off');
+    input.setAttribute('autocapitalize','off');
+    input.setAttribute('spellcheck','false');
+  }
+
   function cleanNums(raw){
     return [...new Set(String(raw||'').split(/[\s,]+/).map(Number).filter(n=>n>=1&&n<=45))].sort((a,b)=>a-b);
   }
@@ -75,6 +87,7 @@
       </section>`;
   }
   async function init(){
+    enableTextBaseInput();
     try{
       const res=await fetch('./data/lotto.json?ts='+Date.now());
       DATA=(await res.json()).slice().sort((a,b)=>Number(b.round)-Number(a.round));
