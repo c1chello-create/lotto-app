@@ -78,14 +78,24 @@
         candidates.push({nums,replace:1,replaceCount:1,removed:[removed],added:[added],parts});
       });
     });
-    const scored=candidates.sort((a,b)=>(Number(b.parts?.total)||0)-(Number(a.parts?.total)||0)||a.nums.join(',').localeCompare(b.nums.join(','))).slice(0,10);
-    if(!scored.length)return [];
-    const max=Number(scored[0].parts?.total)||1,min=Number(scored[scored.length-1].parts?.total)||0;
-    return scored.map((x,i)=>{
+    // v2.1.2: Classic 점수로 TOP10을 먼저 자르지 않습니다.
+    // 1개 교체 후보 전체에 trust/AI Score를 부여한 뒤 AI Score 기준으로 TOP10을 정합니다.
+    if(!candidates.length)return [];
+    const classicSorted=candidates.slice().sort((a,b)=>(Number(b.parts?.total)||0)-(Number(a.parts?.total)||0)||a.nums.join(',').localeCompare(b.nums.join(',')));
+    const max=Number(classicSorted[0].parts?.total)||1,min=Number(classicSorted[classicSorted.length-1].parts?.total)||0;
+    const prepared=classicSorted.map((x,i)=>{
       const trust=Math.max(55,Math.min(96,Math.round(62+(((Number(x.parts?.total)||0)-min)/(max-min||1))*34)));
+      return {...x,classicRank:i+1,trust};
+    });
+    const aiScored=prepared.map(item=>({...item,aiScore:aiScoreFor(item,prepared)}))
+      .sort((a,b)=>(Number(b.aiScore?.total)||0)-(Number(a.aiScore?.total)||0)
+        ||(Number(b.parts?.total)||0)-(Number(a.parts?.total)||0)
+        ||a.nums.join(',').localeCompare(b.nums.join(',')))
+      .slice(0,10);
+    return aiScored.map((x,i)=>{
       let grade='B등급';
       try{if(typeof global.gradeFromRank==='function')grade=global.gradeFromRank(i);}catch(e){grade=i===0?'S등급':i<3?'A등급':i<6?'B등급':'C등급';}
-      return {...x,rank:i+1,grade,trust};
+      return {...x,rank:i+1,grade};
     });
   }
   function buildDashboardTop6(base,oneRanked){
@@ -149,8 +159,7 @@
     if(!force&&memoryCache.has(cacheKey))return memoryCache.get(cacheKey);
     const c=companion(base,scope,bonus);
     const ranked=c.ranked.map(item=>({...item,replaceCount:replacementCount(base,item),aiScore:aiScoreFor(item,c.ranked)}));
-    const oneBase=dashboardOneReplaceRanked(base,c.data);
-    const oneRanked=oneBase.map(item=>({...item,aiScore:aiScoreFor(item,oneBase)}));
+    const oneRanked=dashboardOneReplaceRanked(base,c.data);
     const dashboardTop6=buildDashboardTop6(base,oneRanked);
     const dashboardTopRanked=dashboardTop6.top10[0]||ranked[0]||null;
     const result={
