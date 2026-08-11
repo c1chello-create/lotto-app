@@ -53,6 +53,61 @@
     const confidence=clamp((pattern.confidence||70)*.60+baseAvg*.20+total*.20);
     return {total,confidence,baseAvg,patternAvg,classic,pattern};
   }
+
+  function replacementCount(base,item){
+    const nums=clean(item?.nums||[]);
+    if(base.length!==6||nums.length!==6)return Number(item?.replace??item?.replaceCount)||0;
+    return base.filter(n=>!nums.includes(n)).length;
+  }
+  function dashboardOneReplaceRanked(base,data){
+    if(base.length!==6)return [];
+    const pool=[];
+    (data?.top||[]).forEach(x=>{const n=Number(x?.n);if(Number.isInteger(n)&&n>=1&&n<=45&&!base.includes(n)&&!pool.includes(n))pool.push(n);});
+    pool.splice(12);
+    if(!pool.length)return [];
+    let allFreq=null;
+    try{allFreq=typeof global.frequencyMap==='function'?global.frequencyMap(global.LOTTO_DATA||global.lottoData||[]):null;}catch(e){}
+    const seen=new Set(),candidates=[];
+    base.forEach(removed=>{
+      pool.forEach(added=>{
+        const nums=clean(base.filter(n=>n!==removed).concat(added));
+        if(nums.length!==6)return;
+        const k=nums.join(',');if(seen.has(k))return;seen.add(k);
+        let parts={total:0};
+        try{if(typeof global.comboScoreParts==='function')parts=global.comboScoreParts(nums,data,allFreq)||parts;}catch(e){}
+        candidates.push({nums,replace:1,replaceCount:1,removed:[removed],added:[added],parts});
+      });
+    });
+    const scored=candidates.sort((a,b)=>(Number(b.parts?.total)||0)-(Number(a.parts?.total)||0)||a.nums.join(',').localeCompare(b.nums.join(','))).slice(0,10);
+    if(!scored.length)return [];
+    const max=Number(scored[0].parts?.total)||1,min=Number(scored[scored.length-1].parts?.total)||0;
+    return scored.map((x,i)=>{
+      const trust=Math.max(55,Math.min(96,Math.round(62+(((Number(x.parts?.total)||0)-min)/(max-min||1))*34)));
+      let grade='B등급';
+      try{if(typeof global.gradeFromRank==='function')grade=global.gradeFromRank(i);}catch(e){grade=i===0?'S등급':i<3?'A등급':i<6?'B등급':'C등급';}
+      return {...x,rank:i+1,grade,trust};
+    });
+  }
+  function buildDashboardTop6(base,oneRanked){
+    if(base.length!==6)return {top10:[],top6:[],frequency:[]};
+    const top10=(oneRanked||[]).slice(0,10);
+    const stats=new Map();
+    top10.forEach((item,idx)=>{
+      clean(item.nums).forEach(n=>{
+        if(!stats.has(n))stats.set(n,{n,count:0,firstRank:idx+1,rankPoints:0,scoreSum:0});
+        const st=stats.get(n);
+        st.count++;
+        st.rankPoints+=10-idx;
+        st.scoreSum+=Number(item.aiScore?.total)||0;
+      });
+    });
+    const frequency=[...stats.values()]
+      .map(x=>({...x,avgScore:x.count?Math.round(x.scoreSum/x.count):0}))
+      .sort((a,b)=>b.count-a.count||a.firstRank-b.firstRank||b.rankPoints-a.rankPoints||a.n-b.n)
+      .map((x,i)=>({...x,frequencyRank:i+1}));
+    return {top10,top6:frequency.slice(0,6).map(x=>x.n).sort((a,b)=>a-b),frequency};
+  }
+
   function summary(base){
     let matches=[],range=[];
     try{matches=typeof global.allMatches==='function'?global.allMatches():[];}catch(e){}
@@ -82,6 +137,7 @@
       if(f.best.replaceCount===1)return `1개 교체가 효율적입니다. ${f.best.removed.join('·')}번을 ${f.best.added.join('·')}번으로 바꾸면 Fusion 지수가 약 ${delta}점 개선됩니다.`;
       return `${f.best.replaceCount}개 교체안이 현재 Fusion 최상위입니다. 다만 기존 번호 ${f.best.kept.length}개를 유지하므로, 자동 최적화에서 1·2·3개 결과를 함께 비교하는 것이 좋습니다.`;
     }
+    if(result.dashboardTop6?.length===6)return `AI Score 1개 교체 TOP10을 다시 투표해 최종 TOP6 ${result.dashboardTop6.join('·')}을 선정했습니다.`;
     if(top?.aiScore)return `AI 추천 1위는 ${top.nums.join('·')}이며 AI Score ${top.aiScore.total}점, Confidence ${top.aiScore.confidence}%입니다.`;
     return '현재 조건의 핵심 결과를 계산했습니다. 상세 근거는 아래 카드에서 확인하세요.';
   }
@@ -92,11 +148,16 @@
     const cacheKey=keyOf(base,scope,bonus);
     if(!force&&memoryCache.has(cacheKey))return memoryCache.get(cacheKey);
     const c=companion(base,scope,bonus);
-    const ranked=c.ranked.map(item=>({...item,aiScore:aiScoreFor(item,c.ranked)}));
+    const ranked=c.ranked.map(item=>({...item,replaceCount:replacementCount(base,item),aiScore:aiScoreFor(item,c.ranked)}));
+    const oneBase=dashboardOneReplaceRanked(base,c.data);
+    const oneRanked=oneBase.map(item=>({...item,aiScore:aiScoreFor(item,oneBase)}));
+    const dashboardTop6=buildDashboardTop6(base,oneRanked);
+    const dashboardTopRanked=dashboardTop6.top10[0]||ranked[0]||null;
     const result={
       base,scope,bonus,summary:summary(base),
       companion:c.data,patterns:c.patterns,ranked,
-      topRanked:ranked[0]||null,currentPattern:base.length===6?patternFor(base,scope,bonus):null,
+      dashboardTop10:dashboardTop6.top10,dashboardTop6:dashboardTop6.top6,dashboardFrequency:dashboardTop6.frequency,
+      topRanked:dashboardTopRanked,currentPattern:base.length===6?patternFor(base,scope,bonus):null,
       fusion:base.length===6?fusion():null,generatedAt:new Date().toISOString()
     };
     result.assistant=assistantText(result);
