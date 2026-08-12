@@ -51,8 +51,19 @@
     <label class="checkline"><input type="checkbox" id="includeBonus" checked> 보너스 번호 포함</label>
   </div>
 
+  <div class="combo-card" id="candidatePool25Card" style="background:#f8fbff;border-color:#bed4ef">
+    <b>🎯 후보풀 25개 직접 입력</b>
+    <p class="combo-guide">서로 다른 번호 25개를 입력하세요. AI Score 계산식은 바꾸지 않고, TOP10·최적해의 새 번호 탐색 범위만 이 25개로 제한합니다.</p>
+    <textarea id="candidatePool25Input" class="combo-input" rows="4" inputmode="numeric" placeholder="예: 1 2 4 5 7 ... 총 25개"></textarea>
+    <div class="combo-btn-row">
+      <button type="button" onclick="setCandidatePool25FromInput()" style="background:#11366b;color:#fff;border-color:#11366b">25개 후보풀 확정</button>
+      <button type="button" onclick="clearCandidatePool25()">후보풀 해제</button>
+    </div>
+    <div id="candidatePool25Status"><p class="combo-guide">후보풀 미설정 · 기존 1~45 탐색 모드</p></div>
+  </div>
+
   <div id="status" class="status-msg">데이터를 불러오는 중입니다...</div>
-  <div class="combo-card" style="background:#f8fbff"><b>📌 버전 히스토리</b><p class="combo-guide">v1.9 Score Optimizer Preview · Consensus AI 별점·백분율·막대그래프 시각화</p><p class="combo-guide">Classic AI 85% + Consensus 보정 15% · 번호 자동 제외 없음</p><p class="combo-guide"><a href="validation.html" style="font-weight:900;color:#11366b;text-decoration:none">🧪 v2.0 Validation Engine 열기 →</a></p></div>
+  <div class="combo-card" style="background:#f8fbff"><b>📌 버전 히스토리</b><p class="combo-guide">v1.9.4 · 후보풀 25개 제한모드 Preview · 기존 AI Score 계산식 유지</p><p class="combo-guide">Classic AI 85% + Consensus 보정 15% · 번호 자동 제외 없음</p><p class="combo-guide"><a href="validation.html" style="font-weight:900;color:#11366b;text-decoration:none">🧪 v2.0 Validation Engine 열기 →</a></p></div>
   <div id="summary"></div>
   <div id="companion"></div>
   <div class="combo-section-title"><b>조합별 출현 이력</b></div>
@@ -60,7 +71,7 @@
   <div id="history"></div>
 </div>
 <script src="js/interval_pattern_engine.js?v=v190-score-opt-preview1"></script>
-<script src="js/combo.js?v=v190-score-opt-preview1"></script>
+<script src="js/combo.js?v=v194-pool25-01"></script>
 <script src="js/engines/companion-engine.js?v=v190-score-opt-preview1"></script>
 <script src="js/engines/pattern-engine.js?v=v190-score-opt-preview1"></script>
 <script src="js/engines/replay-engine.js?v=v190-score-opt-preview1"></script>
@@ -71,7 +82,7 @@
 <script src="js/ai-core.js?v=v190-score-opt-preview1"></script>
 <script src="js/combo-ui.js?v=v190-score-opt-preview1"></script>
 <script src="js/pattern-reference-engine.js?v=v190-score-opt-preview1"></script>
-<script src="js/combo-premium-ui.js?v=v190-score-opt-preview1"></script>
+<script src="js/combo-premium-ui.js?v=v194-pool25-01"></script>
 <script src="js/engines/companion-combination-engine.js?v=v193-score-contribution1"></script>
 <script src="js/companion-combination-ui.js?v=v193-score-contribution1"></script>
 <script src="js/engines/score-fusion-engine.js?v=v120-reverse-fast"></script>
