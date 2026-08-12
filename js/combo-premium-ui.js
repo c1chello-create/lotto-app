@@ -38,7 +38,7 @@ function renderRankedCombos(data){
     const combos=makeRankedCombos(data);
     if(!combos.length)return`<div class="combo-card ai-ranking-shell"><b>🏆 AI 조합 랭킹</b><p class="combo-guide">추천조합을 만들 만큼 동반번호가 부족합니다. 전체 회차로 바꿔보세요.</p></div>`;
     const maxes={companion:Math.max(...combos.map(c=>c.parts.companion||0),1),trend:Math.max(...combos.map(c=>(c.parts.recent||0)+(c.parts.long||0)),1),structure:Math.max(...combos.map(c=>(c.parts.balance||0)+(c.parts.oddEven||0)),1),longlearn:Math.max(...combos.map(c=>(c.parts.historical||0)+(c.parts.learned||0)),1)};
-    return `<div class="combo-card ai-ranking-shell"><div class="ai-ranking-title"><b>🏆 AI 조합 랭킹 TOP 10</b><span>Explainable AI</span></div><p class="combo-guide">기존 AI Score는 유지하고 Pattern Engine은 참고값으로 분리해 표시합니다.</p>${v170WeightPanel()}${combos.map(c=>`<section class="premium-rank-item"><div class="premium-rank-head"><b>${c.rank}위 · ${c.grade}</b><span>종합 ${c.trust}점</span></div><div class="combo-selected">${c.nums.map(n=>ball(n,true,selectedNums.includes(n)?'selected-ball':'')).join('')}</div>${renderAIScoreCard(c,maxes)}${renderComboReport(c.nums)}<div class="combo-btn-row" style="margin-top:8px"><button onclick="saveRecommendedCombo('${c.nums.join(',')}','${c.grade}',${c.trust})">저장</button><button onclick="analyzeSavedCombo('${c.nums.join(',')}')">적중분석</button></div></section>`).join('')}${window.ScoreOptimizerPreview?window.ScoreOptimizerPreview.shell():''}</div>`;
+    return `<div class="combo-card ai-ranking-shell"><div class="ai-ranking-title"><b>🏆 AI 조합 랭킹 TOP 10</b><span>Explainable AI</span></div><p class="combo-guide">기존 AI Score는 유지하고 Pattern Engine은 참고값으로 분리해 표시합니다. ${window.CandidatePool25&&window.CandidatePool25.isActive()?'현재 후보풀 25개 제한 모드입니다.':'현재 기존 탐색 모드입니다.'}</p>${v170WeightPanel()}${combos.map(c=>`<section class="premium-rank-item"><div class="premium-rank-head"><b>${c.rank}위 · ${c.grade}</b><span>종합 ${c.trust}점</span></div><div class="combo-selected">${c.nums.map(n=>ball(n,true,selectedNums.includes(n)?'selected-ball':'')).join('')}</div>${renderAIScoreCard(c,maxes)}${renderComboReport(c.nums)}<div class="combo-btn-row" style="margin-top:8px"><button onclick="saveRecommendedCombo('${c.nums.join(',')}','${c.grade}',${c.trust})">저장</button><button onclick="analyzeSavedCombo('${c.nums.join(',')}')">적중분석</button></div></section>`).join('')}${window.ScoreOptimizerPreview?window.ScoreOptimizerPreview.shell():''}</div>`;
   }catch(e){console.error('v1.7 Premium 랭킹 표시 오류',e);return `<div class="combo-card" style="background:#fff7e6"><b>AI 랭킹 안정화 모드</b><p class="combo-guide">랭킹 표시 중 오류가 발생했습니다. 입력번호와 출현이력은 계속 표시됩니다.</p></div>`}
 }
 (function bindV170Accordion(){
@@ -72,6 +72,9 @@ function renderRankedCombos(data){
 
   function selected(){
     try{return clean(selectedNums);}catch(e){return [];}
+  }
+  function activePool(){
+    try{const p=global.CandidatePool25&&global.CandidatePool25.get();return Array.isArray(p)&&p.length===25?clean(p):null;}catch(e){return null;}
   }
   function companionData(){
     try{return global.CompanionEngine?global.CompanionEngine.analyze():companionAnalysis();}
@@ -171,17 +174,18 @@ function renderRankedCombos(data){
     const pool=[];
     ((data&&data.top)||[]).forEach(x=>pool.push(Number(x.n)));
     (stageOne||[]).slice(0,60).forEach(x=>diff(base,x.nums).in.forEach(n=>pool.push(n)));
-    for(let n=1;n<=45;n++)pool.push(n);
-    return [...new Set(pool)].filter(n=>!base.includes(n)&&n>=1&&n<=45);
+    const bounded=activePool();
+    (bounded||Array.from({length:45},(_,i)=>i+1)).forEach(n=>pool.push(n));
+    return [...new Set(pool)].filter(n=>!base.includes(n)&&n>=1&&n<=45&&(!bounded||bounded.includes(n)));
   }
   function decorate(base,entry,replaceCount){
     const d=diff(base,entry.nums);
     return {...entry,replaceCount,out:d.out,in:d.in};
   }
   async function exhaustiveOne(base,data,target,onProgress){
-    const out=[];let done=0,total=base.length*(45-base.length);
+    const out=[];let done=0;const bounded=activePool(),adds=(bounded||Array.from({length:45},(_,i)=>i+1)).filter(n=>!base.includes(n));let total=base.length*adds.length;
     for(const remove of base){
-      for(let add=1;add<=45;add++){
+      for(const add of adds){
         if(base.includes(add))continue;
         const nums=clean([...base.filter(n=>n!==remove),add]);
         out.push(decorate(base,evaluate(nums,data,target),1));
@@ -244,13 +248,15 @@ function renderRankedCombos(data){
       <div class="combo-selected score-opt-final">${chosen.nums.map(n=>ball(n,true,base.includes(n)?'selected-ball':'')).join('')}</div>
       <button type="button" class="combo-btn score-opt-apply" data-opt-apply="${chosen.nums.join(',')}">대표 최적해 적용</button>
       ${tiesHtml}
-      <p class="combo-guide score-opt-note">※ 번호별 점수는 현재 AI 데이터와 Pattern·Replay·Flow 신호를 종합한 최적화 점수이며 당첨 확률이 아닙니다. 1개 교체는 전체 탐색, 2~3개 교체는 iPhone 성능을 고려한 단계형 후보 탐색입니다.</p>
+      <p class="combo-guide score-opt-note">※ 번호별 점수는 현재 AI 데이터와 Pattern·Replay·Flow 신호를 종합한 최적화 점수이며 당첨 확률이 아닙니다. 후보풀 25개가 설정되면 새 번호는 그 25개 안에서만 탐색합니다. 1개 교체는 전체 탐색, 2~3개 교체는 iPhone 성능을 고려한 단계형 후보 탐색입니다.</p>
     </div>`;
   }
   async function run(){
     if(state.running)return;
     const base=selected();
     if(base.length!==6){setProgress('최적해 번호교체는 번호 6개를 입력한 경우에 사용할 수 있습니다.',true);return;}
+    const bounded=activePool();
+    if(bounded&&base.some(n=>!bounded.includes(n))){setProgress('후보풀 25개 제한 모드에서는 현재 6개 분석번호도 모두 후보풀에 포함되어야 합니다.',true);return;}
     const target=Number(document.getElementById('scoreOptTarget')?.value||70);
     const maxReplace=Number(document.getElementById('scoreOptMax')?.value||3);
     state.running=true;state.target=target;state.maxReplace=maxReplace;state.cache.clear();
@@ -258,7 +264,7 @@ function renderRankedCombos(data){
     try{
       const data=companionData();
       const original={...evaluate(base,data,target),replaceCount:0,out:[],in:[]};
-      setProgress('1개 교체 후보를 전체 탐색하고 있습니다...');
+      setProgress(activePool()?'1개 교체: 25개 후보풀 안에서 전체 탐색 중...':'1개 교체 후보를 전체 탐색하고 있습니다...');
       const one=await exhaustiveOne(base,data,target,setProgress);
       const stages=[{replaceCount:1,...bestSet(one)}];
       let chosenPool=one,met=one.filter(x=>x.targetMet);
@@ -293,7 +299,7 @@ function renderRankedCombos(data){
     const base=selected();
     return `<section class="score-optimizer-card" id="scoreOptimizerCard">
       <div class="score-opt-title"><b>🧩 AI Score 최적해 번호교체</b><span>Preview</span></div>
-      <p class="combo-guide">현재 6개 번호를 유지하면서 1개 교체부터 시작해 필요하면 최대 3개까지 탐색합니다.</p>
+      <p class="combo-guide">현재 6개 번호를 유지하면서 1개 교체부터 시작해 필요하면 최대 3개까지 탐색합니다. 후보풀 25개가 설정되면 추가번호는 후보풀 밖에서 가져오지 않습니다.</p>
       <div class="score-opt-controls"><label>목표점수<select id="scoreOptTarget"><option value="60">60점 이상</option><option value="70" selected>70점 이상</option><option value="80">80점 이상</option></select></label><label>최대 교체<select id="scoreOptMax"><option value="1">1개</option><option value="2">2개</option><option value="3" selected>3개</option></select></label></div>
       <button type="button" id="scoreOptimizerRun" class="combo-btn" ${base.length===6?'':'disabled'}>최적해 번호교체 실행</button>
       <div id="scoreOptimizerResult">${base.length===6?'<p class="combo-guide">실행하면 대표 최적해와 공동 최적해를 표시합니다.</p>':'<p class="combo-guide">번호 6개를 입력한 뒤 사용할 수 있습니다.</p>'}</div>

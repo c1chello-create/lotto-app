@@ -1,9 +1,24 @@
 let lottoData=[],selectedNums=[],matchRange=50,matchMode='partial';const $=id=>document.getElementById(id);
+
+/* ===== Candidate Pool 25 v0.1: 계산식 유지, 탐색범위만 제한 ===== */
+let candidatePool25=[];
+const candidatePool25Key='haengun_candidate_pool_25_v1';
+function normalizeCandidatePool25(nums){return [...new Set((nums||[]).map(Number).filter(n=>Number.isInteger(n)&&n>=1&&n<=45))].sort((a,b)=>a-b)}
+function getCandidatePool25(){return candidatePool25.slice()}
+function candidatePool25Active(){return candidatePool25.length===25}
+function parseCandidatePool25Text(raw){return normalizeCandidatePool25(String(raw||'').trim().split(/[\s,]+/))}
+function renderCandidatePool25Status(message='',isError=false){const box=document.getElementById('candidatePool25Status');if(!box)return;const nums=getCandidatePool25();if(isError){box.innerHTML=`<p class="combo-guide" style="color:#b42318">${message}</p>`;return}if(!nums.length){box.innerHTML='<p class="combo-guide">후보풀 미설정 · 기존 1~45 탐색 모드</p>';return}box.innerHTML=`<p class="combo-guide"><b>후보풀 ${nums.length}/25 확정</b> · AI 계산식은 기존 그대로 사용합니다.</p><div class="combo-selected">${nums.map(n=>ball(n,true)).join('')}</div>${message?`<p class="combo-guide">${message}</p>`:''}`}
+function setCandidatePool25(nums,{persist=true}={}){const clean=normalizeCandidatePool25(nums);if(clean.length!==25){renderCandidatePool25Status(`서로 다른 번호 25개가 필요합니다. 현재 ${clean.length}개입니다.`,true);return false}if(selectedNums.length&&selectedNums.some(n=>!clean.includes(n))){const missing=selectedNums.filter(n=>!clean.includes(n));renderCandidatePool25Status(`현재 분석번호 ${missing.join('·')}번이 후보풀에 없습니다. 분석번호 6개도 25개 후보풀에 포함해 주세요.`,true);return false}candidatePool25=clean;if(persist)try{localStorage.setItem(candidatePool25Key,JSON.stringify(clean))}catch(e){};renderCandidatePool25Status('후보풀 제한 모드가 켜졌습니다. TOP10과 최적해의 추가번호는 이 25개 안에서만 선택됩니다.');try{if(selectedNums.length)renderAll()}catch(e){};return true}
+function setCandidatePool25FromInput(){const input=document.getElementById('candidatePool25Input');return setCandidatePool25(parseCandidatePool25Text(input?input.value:''))}
+function clearCandidatePool25(){candidatePool25=[];try{localStorage.removeItem(candidatePool25Key)}catch(e){};const input=document.getElementById('candidatePool25Input');if(input)input.value='';renderCandidatePool25Status();try{if(selectedNums.length)renderAll()}catch(e){}}
+function loadCandidatePool25(){try{const saved=JSON.parse(localStorage.getItem(candidatePool25Key)||'[]');const clean=normalizeCandidatePool25(saved);if(clean.length===25){candidatePool25=clean;const input=document.getElementById('candidatePool25Input');if(input)input.value=clean.join(' ')}}catch(e){};renderCandidatePool25Status()}
+function candidatePoolRanked(data){if(!candidatePool25Active())return (data.top||[]).map(x=>Number(x.n)).filter(n=>!selectedNums.includes(n));const rank=new Map((data.top||[]).map((x,i)=>[Number(x.n),i]));return candidatePool25.filter(n=>!selectedNums.includes(n)).sort((a,b)=>{const ra=rank.has(a)?rank.get(a):999,rb=rank.has(b)?rank.get(b):999;if(ra!==rb)return ra-rb;const ca=Number(data.counts&&data.counts[a])||0,cb=Number(data.counts&&data.counts[b])||0;return cb-ca||a-b})}
+
 function colorClass(n){n=Number(n);if(n<=9)return'yellow';if(n<=19)return'blue';if(n<=29)return'red';if(n<=39)return'black';return'green'}
 function ball(n,small=false,extra=''){return `<span class="ball ${small?'small-ball':''} ${extra} ${colorClass(n)}">${n}</span>`}
 function tinyBall(n,extra=''){return `<span class="ball tiny-ball ${extra} ${colorClass(n)}">${n}</span>`}
 function includeBonus(){return $('includeBonus')?$('includeBonus').checked:true}
-function parseNums(){const raw=$('comboInput').value.trim();const nums=raw.split(/[\s,]+/).map(v=>Number(v)).filter(n=>Number.isInteger(n));const unique=[...new Set(nums)].sort((a,b)=>a-b);if(unique.length<2||unique.length>6){alert('번호는 2개 이상 6개 이하로 입력하세요.');return null}if(unique.some(n=>n<1||n>45)){alert('번호는 1부터 45 사이만 가능합니다.');return null}return unique}
+function parseNums(){const raw=$('comboInput').value.trim();const nums=raw.split(/[\s,]+/).map(v=>Number(v)).filter(n=>Number.isInteger(n));const unique=[...new Set(nums)].sort((a,b)=>a-b);if(unique.length<2||unique.length>6){alert('번호는 2개 이상 6개 이하로 입력하세요.');return null}if(unique.some(n=>n<1||n>45)){alert('번호는 1부터 45 사이만 가능합니다.');return null}if(candidatePool25Active()&&unique.some(n=>!candidatePool25.includes(n))){alert('후보풀 25개 제한 모드에서는 분석번호도 후보풀 안의 번호만 사용할 수 있습니다.');return null}return unique}
 function rowPool(row){return includeBonus()?[...(row.numbers||[]),row.bonus]:[...(row.numbers||[])]}
 function hitInfo(row){const nums=row.numbers||[];const normal=selectedNums.filter(n=>nums.includes(n)).length;const bonus=selectedNums.includes(row.bonus);const total=normal+(includeBonus()&&bonus?1:0);return{normal,bonus,total}}
 function minHit(){if(matchMode==='exact')return selectedNums.length;if(selectedNums.length>=5)return 3;if(selectedNums.length===4)return 3;return selectedNums.length}
@@ -14,7 +29,7 @@ function rangeMatches(){return matchRowsFrom(sourceRows())}
 function countByThreshold(threshold){return matchRowsFrom(lottoData,threshold).length}
 function exactWinningRows(){if(selectedNums.length!==6)return[];const key=selectedNums.slice().sort((a,b)=>a-b).join(',');return lottoData.filter(row=>(row.numbers||[]).slice().sort((a,b)=>a-b).join(',')===key).sort((a,b)=>b.round-a.round)}
 function setStatusText(){const rule=matchMode==='exact'?'완전일치':'부분일치';$('status').textContent=`전체 ${lottoData.length}개 회차 데이터를 불러왔습니다. / 현재 기준: ${rule}`}
-function renderSummary(){const matches=allMatches(),range=rangeMatches(),last=matches[0],gap=last?lottoData.findIndex(x=>x.round===last.row.round)+1:'-',exact=exactWinningRows(),threshold=minHit();let extra='';if(selectedNums.length>=4){extra=`<button type="button" class="summary-metric-btn" onclick="openHitHistorySheet(4)" aria-label="4개 이상 적중 회차 보기"><b>${countByThreshold(4)}회</b><span>4개 이상</span><em>상세보기</em></button><div><b>${countByThreshold(5)}회</b><span>5개 이상</span></div>`}else{extra=`<div><b>${threshold}개+</b><span>분석 기준</span></div><div><b>${includeBonus()?'포함':'제외'}</b><span>보너스</span></div>`}$('summary').innerHTML=`<div class="combo-card"><b>${selectedNums.length}개 번호 조합 분석</b><div class="combo-selected">${selectedNums.map(n=>ball(n)).join('')}</div><p class="combo-guide">${matchMode==='exact'?'선택한 번호가 모두 동시에 나온 회차만 분석합니다.':'선택한 번호 중 '+threshold+'개 이상 나온 회차를 기준으로 분석합니다.'}</p><div class="summary-metrics"><div><b>${matches.length}회</b><span>전체 출현</span></div><div><b>${range.length}회</b><span>현재 범위</span></div><div><b>${last?last.row.round+'회':'-'}</b><span>최근 출현</span></div><div><b>${gap}</b><span>미출현 기간</span></div>${extra}<div><b>${selectedNums.length===6?exact.length+'회':'해당없음'}</b><span>완전일치</span></div></div></div>`}
+function renderSummary(){const matches=allMatches(),range=rangeMatches(),last=matches[0],gap=last?lottoData.findIndex(x=>x.round===last.row.round)+1:'-',exact=exactWinningRows(),threshold=minHit();let extra='';if(selectedNums.length>=4){extra=`<div><b>${countByThreshold(4)}회</b><span>4개 이상</span></div><div><b>${countByThreshold(5)}회</b><span>5개 이상</span></div>`}else{extra=`<div><b>${threshold}개+</b><span>분석 기준</span></div><div><b>${includeBonus()?'포함':'제외'}</b><span>보너스</span></div>`}$('summary').innerHTML=`<div class="combo-card"><b>${selectedNums.length}개 번호 조합 분석</b><div class="combo-selected">${selectedNums.map(n=>ball(n)).join('')}</div><p class="combo-guide">${matchMode==='exact'?'선택한 번호가 모두 동시에 나온 회차만 분석합니다.':'선택한 번호 중 '+threshold+'개 이상 나온 회차를 기준으로 분석합니다.'}</p><div class="summary-metrics"><div><b>${matches.length}회</b><span>전체 출현</span></div><div><b>${range.length}회</b><span>현재 범위</span></div><div><b>${last?last.row.round+'회':'-'}</b><span>최근 출현</span></div><div><b>${gap}</b><span>미출현 기간</span></div>${extra}<div><b>${selectedNums.length===6?exact.length+'회':'해당없음'}</b><span>완전일치</span></div></div></div>`}
 function companionAnalysis(){const rows=rangeMatches(),counts={};for(let i=1;i<=45;i++)counts[i]=0;rows.forEach(x=>{rowPool(x.row).forEach(n=>{if(!selectedNums.includes(n))counts[n]++})});const max=Math.max(...Object.values(counts),1);const top=Object.entries(counts).map(([n,c])=>({n:Number(n),count:c,index:Math.round((c/max)*100)})).filter(x=>x.count>0).sort((a,b)=>b.count-a.count||a.n-b.n).slice(0,15);return{rows,top,recommend:top.slice(0,3).map(x=>x.n),counts,max}}
 function frequencyMap(rows){const m={};for(let i=1;i<=45;i++)m[i]=0;rows.forEach(row=>(row.numbers||[]).forEach(n=>m[n]++));return m}
 function pairScore(a,b,rows){let c=0;rows.forEach(x=>{const p=rowPool(x.row||x);if(p.includes(a)&&p.includes(b))c++});return c}
@@ -131,45 +146,29 @@ function getUserInputPool(){
   const raw=(document.getElementById('comboInput').value||'').trim();
   return [...new Set(raw.split(/[\s,]+/).map(v=>Number(v)).filter(n=>Number.isInteger(n)&&n>=1&&n<=45))].sort((a,b)=>a-b);
 }
-function aiFlowOverlap(pool, nums){
-  const target=[...new Set((nums||[]).map(Number).filter(n=>n>=1&&n<=45))].sort((a,b)=>a-b);
-  const matched=pool.filter(n=>target.includes(n));
-  const pct=pool.length?Math.round((matched.length/pool.length)*100):0;
-  return {target,matched,pct};
-}
-function aiFlowStars(pct){
-  if(pct>=84)return '★★★★★';
-  if(pct>=67)return '★★★★☆';
-  if(pct>=50)return '★★★☆☆';
-  if(pct>=34)return '★★☆☆☆';
-  return '★☆☆☆☆';
-}
 function renderMyNumberFilter(info){
   const box=document.getElementById('myNumberFilterResult');
   if(!box||!info)return;
   const pool=getUserInputPool();
-  if(!pool.length){box.innerHTML=`<p class="combo-guide" style="color:#b42318">AI Flow 비교를 사용하려면 위 분석번호 입력칸에 후보 번호를 먼저 입력하세요.</p>`;return}
-
-  const chain=info.chain||[];
-  const judge=dreamAiJudge(info);
-  const stages=[
-    {label:'Dream Preview',nums:info.final||[]},
-    {label:'1차 Chain',nums:chain[0]?.final||info.final||[]},
-    {label:'2차 Chain',nums:chain[1]?.final||chain[0]?.final||info.final||[]},
-    {label:'3차 Chain',nums:chain[2]?.final||chain[1]?.final||info.final||[]},
-    {label:'AI Final',nums:judge.pick||info.final||[],final:true}
-  ].map(x=>({...x,...aiFlowOverlap(pool,x.nums)}));
-
-  box.innerHTML=`<div class="ai-flow-card">
-    <div class="ai-flow-title"><b>🤖 AI Flow 비교</b><span>내 번호와 단계별 결과 비교</span></div>
+  if(!pool.length){box.innerHTML=`<p class="combo-guide" style="color:#b42318">내 번호 필터를 사용하려면 위 분석번호 입력칸에 후보 번호를 먼저 입력하세요.</p>`;return}
+  const sources=[...info.final,...info.base,...info.top.map(x=>x.n)];
+  const filtered=pool.filter(n=>sources.includes(n));
+  const topMap=new Map(info.top.map(x=>[x.n,x]));
+  const reason=n=>{
+    const r=[];
+    if(info.final.includes(n))r.push('Preview');
+    if(info.base.includes(n))r.push('기본꿈');
+    if(topMap.has(n))r.push('동반후보');
+    return r.join('+')||'필터';
+  };
+  box.innerHTML=`<div style="border-top:1px solid #e7edf5;margin-top:10px;padding-top:10px">
+    <b>🔎 내 번호 필터 1차 예상</b>
+    <p class="combo-guide">분석번호 입력칸의 번호 중 Preview 결과와 겹치는 번호만 추렸습니다.</p>
     <div class="combo-guide"><b>내 번호 후보</b></div>
     <div class="combo-selected">${pool.map(n=>ball(n,true)).join('')}</div>
-    <div class="ai-flow-list">${stages.map(stage=>`<div class="ai-flow-row ${stage.final?'is-final':''}">
-      <div class="ai-flow-row-head"><b>${stage.label}</b><span>${stage.pct}% · ${aiFlowStars(stage.pct)}</span></div>
-      <div class="ai-flow-balls">${stage.target.map(n=>ball(n,true,stage.matched.includes(n)?'selected-ball':'')).join('')}</div>
-      <div class="ai-flow-match"><span>일치 ${stage.matched.length}/${pool.length}</span><span>${stage.matched.length?stage.matched.map(n=>ball(n,true,'selected-ball')).join(''):'일치 번호 없음'}</span></div>
-    </div>`).join('')}</div>
-    <p class="combo-guide">겹침률은 입력한 내 번호 후보 중 각 단계 결과에 포함된 비율입니다. 기존 AI Score와 추천 계산에는 영향을 주지 않습니다.</p>
+    <div class="combo-guide" style="margin-top:8px"><b>1차 예상</b></div>
+    <div class="combo-selected">${filtered.length?filtered.map(n=>ball(n,true,'selected-ball')).join(''):'<span class="combo-guide">겹치는 번호가 없습니다.</span>'}</div>
+    ${filtered.length?`<p class="combo-guide">${filtered.map(n=>`${n}번: ${reason(n)}`).join(' · ')}</p>`:''}
   </div>`;
 }
 function renderDreamBridge(){
@@ -180,88 +179,6 @@ function renderDreamBridge(){
   const btn=document.getElementById('dreamComboBtn');
   if(btn&&!btn.dataset.bound){btn.dataset.bound='1';btn.onclick=()=>{const kw=(document.getElementById('dreamComboInput').value||'').trim();if(!kw){alert('꿈 키워드를 입력하세요.');return}const usePreview=document.getElementById('dreamAiPreview')?document.getElementById('dreamAiPreview').checked:true;if(usePreview&&lottoData.length){const preview=dreamCompanionPreview(kw);renderDreamPreviewResult(preview)}else{const base=dreamNumberMap(kw);lastDreamPreviewInfo={keyword:kw,base,top:[],addon:[],final:base,range:'기본',rows:0};renderDreamPreviewResult(lastDreamPreviewInfo)}}}
 }
-
-let hitHistoryFilter=4;
-function hitHistoryItems(filter){
-  return lottoData.map(row=>({row,hit:hitInfo(row)})).filter(x=>{
-    if(filter==='all')return x.hit.total>=4;
-    return x.hit.total===Number(filter);
-  }).sort((a,b)=>b.row.round-a.row.round);
-}
-function ensureHitHistorySheet(){
-  let wrap=document.getElementById('hitHistorySheetWrap');
-  if(wrap)return wrap;
-  wrap=document.createElement('div');
-  wrap.id='hitHistorySheetWrap';
-  wrap.className='hit-sheet-wrap';
-  wrap.innerHTML=`<div class="hit-sheet-backdrop" onclick="closeHitHistorySheet()"></div><section class="hit-sheet" role="dialog" aria-modal="true" aria-label="4개 이상 적중 회차"><div class="hit-sheet-handle"></div><div class="hit-sheet-head"><div><b>4개 이상 적중 회차</b><p id="hitSheetSubtitle">선택 번호의 과거 적중 기록</p></div><button type="button" onclick="closeHitHistorySheet()" aria-label="닫기">✕</button></div><div class="hit-sheet-tabs" id="hitSheetTabs"></div><div class="hit-sheet-body" id="hitSheetBody"></div><div class="hit-sheet-detail" id="hitSheetDetail"></div></section>`;
-  document.body.appendChild(wrap);
-  return wrap;
-}
-function openHitHistorySheet(filter=4){
-  if(selectedNums.length<4){alert('번호를 4개 이상 입력한 뒤 확인하세요.');return}
-  hitHistoryFilter=filter;
-  const wrap=ensureHitHistorySheet();
-  wrap.classList.add('open');
-  document.body.classList.add('hit-sheet-lock');
-  renderHitHistorySheet();
-}
-function closeHitHistorySheet(){
-  const wrap=document.getElementById('hitHistorySheetWrap');
-  if(wrap)wrap.classList.remove('open');
-  document.body.classList.remove('hit-sheet-lock');
-}
-function setHitHistoryFilter(filter){
-  hitHistoryFilter=filter;
-  renderHitHistorySheet();
-}
-function renderHitHistorySheet(){
-  const tabs=document.getElementById('hitSheetTabs'),body=document.getElementById('hitSheetBody'),detail=document.getElementById('hitSheetDetail');
-  if(!tabs||!body)return;
-  const defs=[['all','전체'],[4,'4개'],[5,'5개'],[6,'6개']];
-  tabs.innerHTML=defs.map(([value,label])=>`<button type="button" class="${String(hitHistoryFilter)===String(value)?'active':''}" onclick="setHitHistoryFilter('${value}')">${label}</button>`).join('');
-  const items=hitHistoryItems(hitHistoryFilter);
-  body.innerHTML=items.length?items.map(x=>`<button type="button" class="hit-round-row" onclick="showHitRoundDetail(${x.row.round})"><span><b>${x.row.round}회</b><small>${x.row.date||''}</small></span><span class="hit-round-balls">${(x.row.numbers||[]).map(n=>ball(n,true,selectedNums.includes(n)?'selected-ball':'')).join('')}<i>+</i>${ball(x.row.bonus,true,selectedNums.includes(x.row.bonus)?'selected-ball':'')}</span><strong>${x.hit.total}개</strong></button>`).join(''):`<div class="hit-sheet-empty">해당 적중 회차가 없습니다.</div>`;
-  if(detail)detail.innerHTML='';
-  const sub=document.getElementById('hitSheetSubtitle');
-  if(sub)sub.textContent=`${items.length}개 회차 · 회차를 누르면 상세 비교가 표시됩니다.`;
-}
-function showHitRoundDetail(round){
-  const detail=document.getElementById('hitSheetDetail');
-  const row=lottoData.find(x=>Number(x.round)===Number(round));
-  if(!detail||!row)return;
-  const hit=hitInfo(row);
-  const winning=[...(row.numbers||[])];
-  const matched=selectedNums.filter(n=>winning.includes(n)||(includeBonus()&&n===row.bonus));
-  const missed=selectedNums.filter(n=>!matched.includes(n));
-  detail.innerHTML=`<div class="hit-detail-card"><div class="hit-detail-head"><b>${row.round}회 상세 비교</b><span>${row.date||''}</span></div><div class="hit-detail-label">당첨번호</div><div class="combo-selected">${winning.map(n=>ball(n,true,selectedNums.includes(n)?'selected-ball':'')).join('')}<span class="hit-plus">+</span>${ball(row.bonus,true,selectedNums.includes(row.bonus)?'selected-ball':'')}</div><div class="hit-detail-grid"><div><b>${hit.total}개</b><span>총 일치</span></div><div><b>${hit.normal}개</b><span>일반번호</span></div><div><b>${hit.bonus?'포함':'없음'}</b><span>보너스</span></div></div><div class="hit-detail-label">일치 번호</div><div class="combo-selected">${matched.length?matched.map(n=>ball(n,true,'selected-ball')).join(''):'없음'}</div><div class="hit-detail-label">미일치 번호</div><div class="combo-selected">${missed.length?missed.map(n=>ball(n,true)).join(''):'없음'}</div></div>`;
-  detail.scrollIntoView({behavior:'smooth',block:'nearest'});
-}
-
-(function injectAiFlowAndHitSheetStyle(){
-  if(document.getElementById('aiFlowHitSheetStyle'))return;
-  const st=document.createElement('style');
-  st.id='aiFlowHitSheetStyle';
-  st.textContent=`
-    .summary-metrics .summary-metric-btn{appearance:none;font:inherit;color:inherit;background:linear-gradient(180deg,#fff,#f7fbff);border:1px solid #b9d8ff;border-radius:12px;padding:8px;cursor:pointer;position:relative}
-    .summary-metrics .summary-metric-btn b,.summary-metrics .summary-metric-btn span{display:block}
-    .summary-metrics .summary-metric-btn em{display:block;font-style:normal;font-size:10px;color:#1769aa;margin-top:3px;font-weight:800}
-    .ai-flow-card{border-top:1px solid #dbe7f5;margin-top:12px;padding-top:12px}
-    .ai-flow-title{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px}.ai-flow-title span{font-size:11px;color:#667085}
-    .ai-flow-list{display:grid;gap:8px;margin-top:10px}.ai-flow-row{border:1px solid #e4eaf2;border-radius:14px;padding:10px;background:#fff}.ai-flow-row.is-final{border-color:#f0c96a;background:#fffaf0}
-    .ai-flow-row-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:7px}.ai-flow-row-head span{font-size:12px;font-weight:900;color:#365b8c}
-    .ai-flow-balls{display:flex;flex-wrap:wrap;gap:5px}.ai-flow-match{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:7px;padding-top:7px;border-top:1px dashed #e4e7ec;font-size:11px;color:#667085}.ai-flow-match>span:last-child{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:3px}
-    .hit-sheet-lock{overflow:hidden}.hit-sheet-wrap{position:fixed;inset:0;z-index:99999;visibility:hidden;pointer-events:none}.hit-sheet-wrap.open{visibility:visible;pointer-events:auto}.hit-sheet-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.45);opacity:0;transition:opacity .18s}.hit-sheet-wrap.open .hit-sheet-backdrop{opacity:1}
-    .hit-sheet{position:absolute;left:0;right:0;bottom:0;max-height:88vh;background:#fff;border-radius:22px 22px 0 0;transform:translateY(102%);transition:transform .18s ease;display:flex;flex-direction:column;box-shadow:0 -10px 35px rgba(15,23,42,.22)}.hit-sheet-wrap.open .hit-sheet{transform:translateY(0)}
-    .hit-sheet-handle{width:44px;height:5px;border-radius:99px;background:#d0d5dd;margin:8px auto 4px}.hit-sheet-head{display:flex;justify-content:space-between;align-items:flex-start;padding:8px 16px}.hit-sheet-head b{font-size:17px}.hit-sheet-head p{margin:3px 0 0;color:#667085;font-size:12px}.hit-sheet-head button{border:0;background:#f2f4f7;border-radius:50%;width:34px;height:34px;font-size:16px}
-    .hit-sheet-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:6px 16px 10px}.hit-sheet-tabs button{border:1px solid #d0d5dd;background:#fff;border-radius:10px;padding:9px 4px;font-weight:800}.hit-sheet-tabs button.active{background:#1769aa;color:#fff;border-color:#1769aa}
-    .hit-sheet-body{overflow:auto;padding:0 12px 14px;min-height:120px}.hit-round-row{width:100%;display:grid;grid-template-columns:66px 1fr 42px;align-items:center;gap:7px;border:0;border-top:1px solid #eef1f5;background:#fff;padding:10px 4px;text-align:left}.hit-round-row>span:first-child b,.hit-round-row>span:first-child small{display:block}.hit-round-row small{font-size:10px;color:#98a2b3;margin-top:2px}.hit-round-balls{display:flex;flex-wrap:wrap;gap:3px;align-items:center}.hit-round-balls i{font-style:normal;color:#98a2b3}.hit-round-row strong{color:#1769aa;text-align:right}.hit-sheet-empty{text-align:center;padding:32px;color:#667085}
-    .hit-sheet-detail{padding:0 12px 16px;overflow:auto}.hit-detail-card{border:1px solid #b9d8ff;background:#f8fbff;border-radius:16px;padding:12px}.hit-detail-head{display:flex;justify-content:space-between;gap:8px;align-items:center}.hit-detail-head span{font-size:11px;color:#667085}.hit-detail-label{font-size:12px;font-weight:900;color:#475467;margin:10px 0 5px}.hit-detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}.hit-detail-grid div{background:#fff;border:1px solid #dbe7f5;border-radius:10px;padding:8px;text-align:center}.hit-detail-grid b,.hit-detail-grid span{display:block}.hit-detail-grid span{font-size:10px;color:#667085;margin-top:2px}.hit-plus{align-self:center;color:#98a2b3;font-weight:900}
-    @media(min-width:720px){.hit-sheet{left:50%;right:auto;width:620px;transform:translate(-50%,102%)}.hit-sheet-wrap.open .hit-sheet{transform:translate(-50%,0)}}
-  `;
-  document.head.appendChild(st);
-})();
-
 function learnedHitRate(nums){
   const rows=lottoData.map(row=>{const normal=nums.filter(n=>(row.numbers||[]).includes(n)).length,bonus=nums.includes(row.bonus);return{row,normal,bonus,total:normal+(bonus?1:0)}});
   const hit3=rows.filter(x=>x.normal>=3||x.total>=3).length,hit4=rows.filter(x=>x.normal>=4||x.total>=4).length,hit5=rows.filter(x=>x.normal>=5||x.total>=5).length;
@@ -283,7 +200,22 @@ function renderSavedCombos(){let box=document.getElementById('savedCombos');if(!
 
 function comboScoreParts(nums,data,allFreq){const companion=companionIndexScore(nums,data),balance=zoneBalanceScore(nums),oddEven=oddEvenScore(nums),recent=recentTrendScore(nums),long=longTrendScore(nums,allFreq),historical=historicalHitScore(nums,data.rows)*0.35,learned=learningScore(nums),total=companion+balance+oddEven+recent+long+historical+learned;return{companion,balance,oddEven,recent,long,historical,learned,total}}
 function combinations(arr,k){const out=[];function rec(start,pick){if(pick.length===k){out.push(pick);return}for(let i=start;i<arr.length;i++)rec(i+1,[...pick,arr[i]])}rec(0,[]);return out}
-function makeRankedCombos(data){const companionPool=data.top.map(x=>x.n).filter(n=>!selectedNums.includes(n)),allFreq=frequencyMap(lottoData);let candidates=[];if(selectedNums.length>=6){combinations(selectedNums,4).forEach(s=>{combinations(companionPool.slice(0,12),2).forEach(c=>candidates.push({nums:[...s,...c].sort((a,b)=>a-b),replace:2}))});combinations(selectedNums,5).forEach(s=>{companionPool.slice(0,12).forEach(c=>candidates.push({nums:[...s,c].sort((a,b)=>a-b),replace:1}))});combinations(selectedNums,3).forEach(s=>{combinations(companionPool.slice(0,10),3).forEach(c=>candidates.push({nums:[...s,...c].sort((a,b)=>a-b),replace:3}))})}else{const need=6-selectedNums.length;combinations(companionPool.slice(0,15),need).forEach(c=>candidates.push({nums:[...selectedNums,...c].sort((a,b)=>a-b),replace:need}))}const seen=new Set();candidates=candidates.filter(c=>{const key=c.nums.join(',');if(seen.has(key))return false;seen.add(key);return true});let scored=candidates.map(c=>({...c,parts:comboScoreParts(c.nums,data,allFreq)})).sort((a,b)=>b.parts.total-a.parts.total||a.nums.join('').localeCompare(b.nums.join(''))).slice(0,10);if(!scored.length)return[];const max=scored[0].parts.total||1,min=scored[scored.length-1].parts.total||0;return scored.map((x,i)=>{const trust=Math.round(62+((x.parts.total-min)/(max-min||1))*34);return{...x,rank:i+1,grade:gradeFromRank(i),trust:Math.max(55,Math.min(96,trust)),stars:starByTrust(trust)}})}
+function makeRankedCombos(data){
+  if(candidatePool25Active()&&selectedNums.some(n=>!candidatePool25.includes(n)))return[];
+  const companionPool=candidatePoolRanked(data),allFreq=frequencyMap(lottoData);let candidates=[];
+  if(selectedNums.length>=6){
+    combinations(selectedNums,4).forEach(s=>combinations(companionPool.slice(0,12),2).forEach(c=>candidates.push({nums:[...s,...c].sort((a,b)=>a-b),replace:2})));
+    combinations(selectedNums,5).forEach(s=>companionPool.slice(0,12).forEach(c=>candidates.push({nums:[...s,c].sort((a,b)=>a-b),replace:1})));
+    combinations(selectedNums,3).forEach(s=>combinations(companionPool.slice(0,10),3).forEach(c=>candidates.push({nums:[...s,...c].sort((a,b)=>a-b),replace:3})));
+  }else{
+    const need=6-selectedNums.length;combinations(companionPool.slice(0,15),need).forEach(c=>candidates.push({nums:[...selectedNums,...c].sort((a,b)=>a-b),replace:need}));
+  }
+  const seen=new Set(); candidates=candidates.filter(c=>{const key=c.nums.join(',');if(seen.has(key))return false;seen.add(key);return true});
+  let scored=candidates.map(c=>({...c,parts:comboScoreParts(c.nums,data,allFreq)}));
+  if(window.ConsensusEngine) scored=window.ConsensusEngine.enrich(scored,data); else scored.sort((a,b)=>b.parts.total-a.parts.total);
+  scored=scored.slice(0,10); if(!scored.length)return[];
+  return scored.map((x,i)=>{const trust=x.finalScore||x.classicTrust||Math.round(62+i*-2);return{...x,rank:i+1,grade:gradeFromRank(i),trust:Math.max(55,Math.min(98,trust)),stars:starByTrust(trust)}})
+}
 
 function pctOf(value,max){return Math.max(0,Math.min(100,Math.round(((value||0)/(max||1))*100)))}
 function starsFromScore(p){if(p>=88)return'★★★★★';if(p>=75)return'★★★★☆';if(p>=60)return'★★★☆☆';if(p>=40)return'★★☆☆☆';return'★☆☆☆☆'}
@@ -1006,11 +938,12 @@ function injectHistoryWideStyle(){
 }
 
 function renderHistory(){injectHistoryWideStyle();const matches=rangeMatches();if(!matches.length){$('history').innerHTML=`<div class="combo-card center">조건에 맞는 회차가 없습니다.</div>`;return}$('history').innerHTML=matches.map(x=>{const row=x.row,hit=x.hit,tag=`${hit.normal}${hit.bonus&&includeBonus()?'+B':''}개`,nums=row.numbers.map(n=>tinyBall(n,selectedNums.includes(n)?'selected-ball':'')).join('');return`<div class="combo-row history-wide"><div class="round-cell"><b>${row.round}회</b><span>${row.date}</span></div><div class="history-balls">${nums}</div><div>${tinyBall(row.bonus,selectedNums.includes(row.bonus)?'selected-ball':'')}</div><div><span class="hit-tag">${tag}</span></div></div>`}).join('')}
-function renderAll(){renderDreamBridge();if(!selectedNums.length)return;setStatusText();renderSummary();renderCompanion();renderSavedCombos();renderHistory()}
+function renderAllLegacy(){renderDreamBridge();if(!selectedNums.length)return;setStatusText();renderSummary();renderCompanion();renderSavedCombos();renderHistory()}
+function renderAll(){if(window.ComboUI&&typeof window.ComboUI.renderAll==='function')return window.ComboUI.renderAll();return renderAllLegacy()}
 async function loadData(){try{const res=await fetch('./data/lotto.json?ts='+Date.now());const data=await res.json();if(!Array.isArray(data))throw new Error('lotto.json 배열 아님');lottoData=data.sort((a,b)=>b.round-a.round);window.LOTTO_DATA=lottoData;window.lottoData=lottoData;$('status').textContent=`전체 ${lottoData.length}개 회차 데이터를 불러왔습니다.`;setTimeout(()=>{renderDreamBridge();renderSavedCombos()},0);const saved=JSON.parse(localStorage.getItem('haengun_my_nums')||'null');if(Array.isArray(saved)&&saved.length>=2){selectedNums=saved.slice(0,6).sort((a,b)=>a-b);$('comboInput').value=selectedNums.join(' ');renderAll()}}catch(e){console.error(e);$('status').textContent='데이터 오류: data/lotto.json을 읽지 못했습니다.'}}
 function addModeButtons(){const box=document.querySelector('.combo-btn-row');if(!box||document.getElementById('modePartial'))return;const wrap=document.createElement('div');wrap.className='combo-btn-row';wrap.innerHTML=`<button id="modePartial" class="active">부분일치</button><button id="modeExact">완전일치</button>`;box.insertAdjacentElement('afterend',wrap);$('modePartial').onclick=()=>{matchMode='partial';$('modePartial').classList.add('active');$('modeExact').classList.remove('active');renderAll()};$('modeExact').onclick=()=>{matchMode='exact';$('modeExact').classList.add('active');$('modePartial').classList.remove('active');renderAll()}}
 function bindEvents(){setTimeout(renderDreamBridge,0);$('analyzeBtn').onclick=()=>{const nums=parseNums();if(!nums)return;selectedNums=nums;renderAll()};document.querySelectorAll('.range-btn').forEach(btn=>{btn.onclick=()=>{document.querySelectorAll('.range-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');matchRange=btn.dataset.range;renderAll()}});$('includeBonus').onchange=()=>renderAll();addModeButtons()}
-injectHistoryWideStyle();bindEvents();loadData();
+injectHistoryWideStyle();bindEvents();loadCandidatePool25();loadData();
 
 
 /* =========================================================
@@ -2538,3 +2471,246 @@ function renderAll(){
   `;
   document.head.appendChild(st);
 })();
+
+
+/* v1.6.8 Final Stable Override */
+function v168Num(v,d=0){v=Number(v);return Number.isFinite(v)?v:d}
+function v168Clamp(v,min=0,max=100){return Math.max(min,Math.min(max,Math.round(v168Num(v))))}
+function v168Text(v,fallback='-'){return (v===undefined||v===null||v===''||v==='undefined'||v==='null')?fallback:String(v)}
+function v168Arr(v){return Array.isArray(v)?v:[]}
+function v168Nums(nums){return Array.from(new Set(v168Arr(nums).map(Number).filter(n=>n>=1&&n<=45))).sort((a,b)=>a-b)}
+function v168RowsAll(){
+  const base=(Array.isArray(lottoData)&&lottoData.length)?lottoData:(Array.isArray(window.LOTTO_DATA)&&window.LOTTO_DATA.length?window.LOTTO_DATA:(Array.isArray(window.lottoData)&&window.lottoData.length?window.lottoData:[]));
+  return base.slice().sort((a,b)=>Number(a.round)-Number(b.round));
+}
+function v168RowsCurrent(){const r=v168RowsAll(); if(matchRange==='50')return r.slice(-50); if(matchRange==='100')return r.slice(-100); return r}
+function v168Pool(row){if(!row)return[]; const a=v168Arr(row.numbers).map(Number).filter(n=>n>=1&&n<=45); if(typeof includeBonus==='function'&&includeBonus()&&row.bonus)a.push(Number(row.bonus)); return a}
+function v168Hit(row,nums){const s=new Set(v168Pool(row)); return nums.filter(n=>s.has(n)).length}
+function v168Prev(rows,row,gap){const r=Number(row.round); const e=rows.find(x=>Number(x.round)===r-gap); if(e)return e; const i=rows.findIndex(x=>Number(x.round)===r); return i>=gap?rows[i-gap]:null}
+function v168NormalizePatternResult(raw){
+  raw=raw||{}; const reasons=raw.reasons||{};
+  const topNumbers=v168Nums(raw.topNumbers||raw.final||raw.chainPick||[]);
+  const patternTop=v168Arr(raw.patternTop||raw.patternNums||raw.candidates).map(x=>({n:Number(x.n??x.num??x),count:v168Num(x.count??x.score??0)})).filter(x=>x.n>=1&&x.n<=45);
+  const replayTop=v168Arr(raw.replayTop||raw.replayNums||raw.topNums).map(x=>({n:Number(x.n??x.num??x),count:v168Num(x.count??x.score??0)})).filter(x=>x.n>=1&&x.n<=45);
+  const chains=v168Arr(raw.chains||raw.flows||raw.flowChains).map(x=>({chain:v168Nums(x.chain||x.nums||[]),count:v168Num(x.count)})).filter(x=>x.chain.length);
+  const r={
+    key:v168Text(raw.key,''),
+    pattern:v168Clamp(raw.pattern??raw.patternBase??raw.patternScore),
+    replay:v168Clamp(raw.replay??raw.replayScore),
+    flow:v168Clamp(raw.flow??raw.flowScore),
+    dream:v168Clamp(raw.dream??raw.dreamScore??raw.total),
+    confidence:v168Clamp(raw.confidence??70,55,98),
+    mode:v168Text(raw.mode,'참고'),
+    sampleCount:v168Num(raw.sampleCount??raw.samples??0),
+    comparisons:v168Num(raw.comparisons??raw.compare??0),
+    keepCount:v168Num(raw.keepCount??raw.preserved??0),
+    inputCount:v168Num(raw.inputCount??0),
+    topNumbers, patternTop, replayTop, chains,
+    pairGroups:v168Arr(raw.pairGroups||raw.pairs),
+    tripleGroups:v168Arr(raw.tripleGroups||raw.triples),
+    reasons:{
+      pattern:v168Text(reasons.pattern||raw.patternNote,'Pattern 산출근거 대기'),
+      replay:v168Text(reasons.replay||raw.replayNote,'Replay 산출근거 대기'),
+      flow:v168Text(reasons.flow||raw.flowNote,'Flow 산출근거 대기'),
+      dream:v168Text(reasons.dream||raw.dreamNote,'Dream 산출근거 대기')
+    }
+  };
+  r.patternNote=r.reasons.pattern; r.replayNote=r.reasons.replay; r.flowNote=r.reasons.flow; r.dreamNote=r.reasons.dream;
+  return r;
+}
+function v168SimplePatternCalc(nums){
+  nums=v168Nums(nums); const rows=v168RowsCurrent();
+  if(!rows.length||!nums.length)return v168NormalizePatternResult({key:nums.join(','),pattern:0,replay:0,flow:0,dream:0,confidence:60});
+  const min=nums.length>=4?3:Math.max(2,nums.length);
+  let samples=rows.filter(r=>v168Hit(r,nums)>=min);
+  if(samples.length<5&&min>1)samples=rows.filter(r=>v168Hit(r,nums)>=min-1);
+  samples=samples.slice(-50);
+  function scan(gaps){
+    const freq={},keep={},chains={}; let compare=0,hit=0;
+    samples.forEach(row=>gaps.forEach(g=>{
+      const prev=v168Prev(rows,row,g); if(!prev)return; compare++;
+      const pool=v168Pool(prev); const local=nums.filter(n=>pool.includes(n)); if(local.length)hit++;
+      local.forEach(n=>keep[n]=(keep[n]||0)+1); pool.forEach(n=>freq[n]=(freq[n]||0)+1);
+      const p2=v168Prev(rows,row,g*2);
+      if(p2)v168Pool(p2).forEach(a=>v168Pool(prev).forEach(b=>v168Pool(row).forEach(c=>{const k=`${a}-${b}-${c}`;chains[k]=(chains[k]||0)+1})));
+    }));
+    return {
+      compare,hit,
+      top:Object.entries(freq).map(([n,c])=>({n:Number(n),count:c})).sort((a,b)=>b.count-a.count||a.n-b.n),
+      keepTop:Object.entries(keep).map(([n,c])=>({n:Number(n),count:c})).sort((a,b)=>b.count-a.count||a.n-b.n),
+      chainTop:Object.entries(chains).map(([k,c])=>({chain:k.split('-').map(Number),count:c})).sort((a,b)=>b.count-a.count).slice(0,5)
+    }
+  }
+  const s2=scan([2,4,6,8,10,12,14,16,18,20,22,24]), s3=scan([3,6,9,12,15]);
+  const main=(s2.top[0]?.count||0)>=(s3.top[0]?.count||0)?s2:s3, mode=main===s2?'2계열':'3계열';
+  const repeat=main.compare?main.hit/main.compare:0, conc=main.compare?(main.top[0]?.count||0)/main.compare:0;
+  const topSet=new Set(main.top.slice(0,10).map(x=>x.n)); const keepCount=nums.filter(n=>topSet.has(n)).length; const keepRate=nums.length?keepCount/nums.length:0;
+  const pattern=v168Clamp(repeat*38+conc*35+keepRate*22+Math.min(5,(main.top[0]?.count||0)/4));
+  const replay=v168Clamp(repeat*100);
+  const flow=v168Clamp((main.chainTop[0]?.count||0)*12+Math.min(35,main.chainTop.length*5));
+  const dream=v168Clamp(pattern*.35+replay*.30+flow*.20+keepRate*15);
+  const topNums=[]; main.top.slice(0,8).forEach(x=>{if(!topNums.includes(x.n))topNums.push(x.n)}); main.keepTop.slice(0,6).forEach(x=>{if(!topNums.includes(x.n))topNums.push(x.n)}); nums.forEach(n=>{if(!topNums.includes(n))topNums.push(n)});
+  const final=topNums.slice(0,6).sort((a,b)=>a-b);
+  return v168NormalizePatternResult({
+    key:nums.join(','),pattern,replay,flow,dream,confidence:v168Clamp(55+pattern*.12+replay*.13+flow*.08+dream*.12,55,98),
+    mode,sampleCount:samples.length,comparisons:main.compare,keepCount,inputCount:nums.length,topNumbers:final,patternTop:main.top.slice(0,8),replayTop:main.keepTop.slice(0,8),chains:main.chainTop,
+    reasons:{pattern:`${mode} 우세 · TOP ${main.top[0]?.n||'-'} ${main.top[0]?.count||0}회 / 비교 ${main.compare}`,replay:`${main.hit}/${main.compare} 재현 · 재현율 ${Math.round(repeat*100)}%`,flow:main.chainTop.length?`최고 흐름 ${main.chainTop[0].chain.join('→')} · ${main.chainTop[0].count}회`:'반복 흐름 후보 부족',dream:`최종후보 ${final.join(', ')} · 기준유지 ${keepCount}/${nums.length}`}
+  });
+}
+function v168ReadPatternReference(nums){
+  const key=v168Nums(nums).join(',');
+  try{const saved=JSON.parse(localStorage.getItem('pattern_engine_result')||'null'); if(saved&&(!saved.key||saved.key===key))return v168NormalizePatternResult(saved)}catch(e){}
+  return v168SimplePatternCalc(nums);
+}
+function v168Metric(label,score,note){const safe=v168Clamp(score); return `<div class="ai-core-metric"><div class="ai-core-metric-top"><b>${label}</b><span>${safe}점</span></div><div class="ai-core-bar"><i style="width:${Math.max(6,safe)}%"></i></div><p>${v168Text(note,'')}</p></div>`}
+function v168ReasonBlock(p){
+  const top=(p.topNumbers||[]).slice(0,6);
+  const patternTop=(p.patternTop||[]).slice(0,5).map(x=>`${x.n}번 ${x.count}회`).join(' · ')||'후보 부족';
+  const replay=(p.replayTop||[]).slice(0,5).map(x=>`${x.n}번 ${x.count}회`).join(' · ')||'재현번호 부족';
+  const flow=(p.chains||[]).slice(0,4).map(x=>`${x.chain.join('→')} ${x.count}회`).join(' · ')||'흐름 후보 부족';
+  return `<div class="ai-engine-reason v168-reason"><b>Pattern Engine 참고 산출근거</b><p class="combo-guide">우세계열: ${v168Text(p.mode)} · 샘플 ${p.sampleCount}회 · 비교 ${p.comparisons}회 · 기준번호 유지 ${p.keepCount}/${p.inputCount}</p><p class="combo-guide">TOP 후보: ${top.length?top.map(n=>`${n}번`).join(' · '):'없음'}</p><p class="combo-guide">패턴번호: ${patternTop}</p><p class="combo-guide">재현번호: ${replay}</p><p class="combo-guide">Dream Chain 흐름: ${flow}</p></div>`;
+}
+function renderAIScoreCard(c,maxes){
+  try{
+    const companion=pctOf(c.parts.companion,maxes.companion), trend=pctOf((c.parts.recent||0)+(c.parts.long||0),maxes.trend), structure=pctOf((c.parts.balance||0)+(c.parts.oddEven||0),maxes.structure), learning=pctOf((c.parts.historical||0)+(c.parts.learned||0),maxes.longlearn), p=v168ReadPatternReference(c.nums);
+    const total=v168Clamp(c.trust,55,98), grade=aiScoreGrade(total), confidence=v168Clamp(total*.70+((companion+trend+structure+learning)/4)*.30,55,98), confGrade=aiScoreGrade(confidence);
+    return `<div class="ai-score-card ai-score-v168"><div class="ai-score-head"><b>AI Score Card</b><span>${c.grade} · ${total}점</span></div><div class="ai-core-summary"><div><b>${grade}</b><span>Classic AI Score</span></div><div><b>${confidence}%</b><span>Confidence ${confGrade}</span></div><div><b>${aiScoreJudge(total)}</b><span>AI 판단</span></div></div><div class="ai-core-title">기존 AI 엔진</div><div class="ai-core-grid">${v168Metric('Companion',companion,'동반번호·쌍번호 강도')}${v168Metric('Trend',trend,'최근 흐름과 장기 출현')}${v168Metric('Structure',structure,'구간균형·홀짝구성')}${v168Metric('Learning',learning,'과거 적중·구조학습')}</div><div class="ai-core-title">Pattern Engine 참고값</div><div class="ai-core-grid">${v168Metric('Pattern',p.pattern,p.patternNote)}${v168Metric('Replay',p.replay,p.replayNote)}${v168Metric('Flow',p.flow,p.flowNote)}${v168Metric('Dream',p.dream,p.dreamNote)}</div>${v168ReasonBlock(p)}<details class="ai-score-detail"><summary>AI 계산 근거 자세히 보기</summary><p class="combo-guide">기존 AI Score ${total}점은 기존 추천 알고리즘 그대로 유지됩니다.</p><p class="combo-guide">Pattern Engine은 참고 엔진으로만 표시되며, 현재 버전에서는 최종 AI Score에 영향을 주지 않습니다.</p><p class="combo-guide">Pattern: ${p.reasons.pattern}</p><p class="combo-guide">Replay: ${p.reasons.replay}</p><p class="combo-guide">Flow: ${p.reasons.flow}</p><p class="combo-guide">Dream: ${p.reasons.dream}</p></details></div>`;
+  }catch(e){console.error('v1.6.8 AI Score Card 오류',e);return `<div class="ai-score-card"><div class="ai-score-head"><b>AI Score Card</b><span>안정화 모드</span></div><p class="combo-guide">AI Score Card 표시 중 오류가 있었지만 조합 분석은 계속 표시됩니다.</p></div>`}
+}
+function renderRankedCombos(data){
+  try{const combos=makeRankedCombos(data); if(!combos.length)return`<div class="combo-card" style="margin:10px 0;background:#fff7e6"><b>🏆 AI 조합 랭킹</b><p class="combo-guide">추천조합을 만들 만큼 동반번호가 부족합니다. 전체 회차로 바꿔보세요.</p></div>`; const maxes={companion:Math.max(...combos.map(c=>c.parts.companion||0),1),trend:Math.max(...combos.map(c=>(c.parts.recent||0)+(c.parts.long||0)),1),structure:Math.max(...combos.map(c=>(c.parts.balance||0)+(c.parts.oddEven||0)),1),longlearn:Math.max(...combos.map(c=>(c.parts.historical||0)+(c.parts.learned||0)),1)}; return`<div class="combo-card" style="margin:10px 0;background:#fff7e6"><b>🏆 AI 조합 랭킹 TOP 10</b><p class="combo-guide">기존 AI Score는 유지하고 Pattern Engine은 참고값으로 표시합니다.</p>${combos.map(c=>`<div style="border-top:1px solid #f2e6c9;padding:11px 0"><b style="color:#8a5b00">${c.rank}위 · ${c.grade} · 종합 ${c.trust}점</b><div class="combo-selected">${c.nums.map(n=>ball(n,true,selectedNums.includes(n)?'selected-ball':'')).join('')}</div>${renderAIScoreCard(c,maxes)}${renderComboReport(c.nums)}<div class="combo-btn-row" style="margin-top:8px"><button onclick="saveRecommendedCombo('${c.nums.join(',')}','${c.grade}',${c.trust})">저장</button><button onclick="analyzeSavedCombo('${c.nums.join(',')}')">적중분석</button></div></div>`).join('')}</div>`}catch(e){console.error('v1.6.8 랭킹 표시 오류',e);return `<div class="combo-card" style="background:#fff7e6"><b>AI 랭킹 안정화 모드</b><p class="combo-guide">랭킹 표시 중 오류가 발생했습니다. 입력번호와 출현이력은 계속 표시됩니다.</p></div>`}
+}
+function renderCompanion(){try{const data=companionAnalysis(),max=data.top.length?data.top[0].count:1,threshold=minHit();let html=`<div class="combo-card"><b>🤝 동반번호 추천</b><p class="combo-guide">${selectedNums.map(n=>n+'번').join(', ')} 기준으로, ${threshold}개 이상 함께 나온 회차에서 추가 번호를 집계했습니다.</p>`; if(data.recommend.length){html+=`<div class="combo-card" style="margin:10px 0;background:#f0f7ff"><b>AI 추천 동반번호</b><div class="combo-selected">${data.recommend.map(n=>ball(n,true)).join('')}</div><p class="combo-guide">동반번호는 아래 AI 조합 랭킹에 반영됩니다.</p></div>`;html+=renderRankedCombos(data)}else html+=`<p class="combo-guide">현재 범위에서는 추천할 동반번호가 없습니다. 전체 회차로 바꿔보세요.</p>`; html+=data.top.length?data.top.slice(0,10).map(x=>{const w=Math.max(8,Math.round(x.count/max*100));return`<div class="companion-row"><div>${ball(x.n,true)}</div><div class="companion-bar"><i style="width:${w}%"></i></div><div class="companion-count">${x.count}회 · 지수 ${x.index}</div></div>`}).join(''):`<div class="combo-guide">동반출현 기록이 없습니다.</div>`; html+=`<p class="combo-guide">분석 기준: 조건을 만족한 ${data.rows.length}개 회차에서 추가 번호를 집계했습니다.</p></div>`;$('companion').innerHTML=html}catch(e){console.error('v1.6.8 동반번호 표시 오류',e);$('companion').innerHTML=`<div class="combo-card" style="background:#fff7e6"><b>동반번호 표시 안정화 모드</b><p class="combo-guide">동반번호 표시 중 오류가 발생했습니다. 조합별 출현 이력은 계속 표시합니다.</p></div>`}}
+function renderHistory(){try{injectHistoryWideStyle();const matches=rangeMatches();if(!matches.length){$('history').innerHTML=`<div class="combo-card center">조건에 맞는 회차가 없습니다.</div>`;return}$('history').innerHTML=matches.map(x=>{const row=x.row,hit=x.hit,tag=`${hit.normal}${hit.bonus&&includeBonus()?'+B':''}개`,nums=row.numbers.map(n=>tinyBall(n,selectedNums.includes(n)?'selected-ball':'')).join('');return`<div class="combo-row history-wide"><div class="round-cell"><b>${row.round}회</b><span>${row.date}</span></div><div class="history-balls">${nums}</div><div>${tinyBall(row.bonus,selectedNums.includes(row.bonus)?'selected-ball':'')}</div><div><span class="hit-tag">${tag}</span></div></div>`}).join('')}catch(e){console.error('v1.6.8 출현이력 표시 오류',e);$('history').innerHTML=`<div class="combo-card center">조합별 출현 이력 표시 중 오류가 발생했습니다.</div>`}}
+function renderAll(){renderDreamBridge();if(!selectedNums.length)return;try{window.LOTTO_DATA=lottoData;window.lottoData=lottoData}catch(e){};try{setStatusText()}catch(e){};try{renderSummary()}catch(e){console.error('요약 표시 오류',e)};try{renderCompanion()}catch(e){console.error('동반/AI 표시 오류',e)};try{renderSavedCombos()}catch(e){console.error('저장조합 표시 오류',e)};try{renderHistory()}catch(e){console.error('출현이력 표시 오류',e)}}
+(function injectV168StableStyle(){if(document.getElementById('aiScoreV168StableStyle'))return;const st=document.createElement('style');st.id='aiScoreV168StableStyle';st.textContent=`.ai-score-v168 .v168-reason{background:#fffdf6;border:1px dashed #e1bd5c;border-radius:16px;padding:14px;margin-top:12px}.ai-score-v168 .v168-reason b{display:block;color:#8a5b00;margin-bottom:8px}.ai-score-v168 .v168-reason p{margin:6px 0}`;document.head.appendChild(st)})();
+
+/* =========================================================
+   v1.7 Premium UI Override
+   UI only: 기존 AI 계산 로직 및 점수 산식 변경 없음
+========================================================= */
+function v170WeightPanel(){
+  const rows=[
+    ['Frequency',40],['Continuity',20],['Replay',15],
+    ['Flow',10],['Pattern Quality',10],['Dream',5]
+  ];
+  return `<section class="ai-weight-panel" aria-label="AI Score 산출 비율">
+    <div><h3>AI Score 산출 비율</h3><small>총 100%</small></div>
+    ${rows.map(([label,value])=>`<div class="ai-weight-row"><span>${label}</span><div class="ai-weight-track"><i style="width:${value*2.5}%"></i></div><b>${value}%</b></div>`).join('')}
+    <p class="ai-weight-note">※ 현재 AI Score는 위 6개 요소를 종합하여 계산됩니다.</p>
+  </section>`;
+}
+function v170Accordion(label,icon,html,id){
+  return `<div class="premium-accordion">
+    <button type="button" class="premium-accordion-toggle" aria-expanded="false" aria-controls="${id}">
+      <span class="acc-icon"><span>${icon}</span>${label}</span><span class="acc-arrow">⌄</span>
+    </button>
+    <div class="premium-accordion-panel" id="${id}"><div><div class="premium-accordion-content">${html}</div></div></div>
+  </div>`;
+}
+function renderAIScoreCard(c,maxes){
+  try{
+    const companion=pctOf(c.parts.companion,maxes.companion), trend=pctOf((c.parts.recent||0)+(c.parts.long||0),maxes.trend), structure=pctOf((c.parts.balance||0)+(c.parts.oddEven||0),maxes.structure), learning=pctOf((c.parts.historical||0)+(c.parts.learned||0),maxes.longlearn), p=v168ReadPatternReference(c.nums);
+    const total=v168Clamp(c.trust,55,98), grade=aiScoreGrade(total), confidence=v168Clamp(total*.70+((companion+trend+structure+learning)/4)*.30,55,98), confGrade=aiScoreGrade(confidence);
+    const key=(c.nums||[]).join('-');
+    const aiReason=`<p class="combo-guide"><b>Classic AI Score ${total}점</b> · ${grade}</p><p class="combo-guide">Companion ${companion}점 · Trend ${trend}점 · Structure ${structure}점 · Learning ${learning}점</p><p class="combo-guide">Confidence ${confidence}%는 당첨 확률이 아니라 현재 분석 근거의 일관성 표시입니다.</p><p class="combo-guide">기존 추천 알고리즘과 점수 산식은 변경하지 않았습니다.</p>`;
+    const patternReason=`<p class="combo-guide"><b>우세계열:</b> ${v168Text(p.mode)} · 샘플 ${p.sampleCount}회 · 비교 ${p.comparisons}회</p><p class="combo-guide"><b>Pattern:</b> ${p.reasons.pattern}</p><p class="combo-guide"><b>Replay:</b> ${p.reasons.replay}</p><p class="combo-guide"><b>Flow:</b> ${p.reasons.flow}</p><p class="combo-guide"><b>Dream:</b> ${p.reasons.dream}</p><p class="combo-guide">Pattern Engine은 참고값이며 현재 최종 AI Score에는 영향을 주지 않습니다.</p>`;
+    return `<div class="ai-score-card ai-score-v168"><div class="ai-score-head"><b>AI Score Card</b><span>${c.grade} · ${total}점</span></div><div class="ai-core-summary"><div><b>${grade}</b><span>Classic AI Score</span></div><div><b>${confidence}%</b><span>Confidence ${confGrade}</span></div><div><b>${aiScoreJudge(total)}</b><span>AI 판단</span></div></div><div class="ai-core-title">기존 AI 엔진</div><div class="ai-core-grid">${v168Metric('Companion',companion,'동반번호·쌍번호 강도')}${v168Metric('Trend',trend,'최근 흐름과 장기 출현')}${v168Metric('Structure',structure,'구간균형·홀짝구성')}${v168Metric('Learning',learning,'과거 적중·구조학습')}</div><div class="ai-core-title">Pattern Engine 참고값</div><div class="ai-core-grid">${v168Metric('Pattern',p.pattern,p.patternNote)}${v168Metric('Replay',p.replay,p.replayNote)}${v168Metric('Flow',p.flow,p.flowNote)}${v168Metric('Dream',p.dream,p.dreamNote)}</div>${v170Accordion('AI 계산 근거','🧠',aiReason,`ai-reason-${key}`)}${v170Accordion('Pattern 산출 근거','📈',patternReason,`pattern-reason-${key}`)}</div>`;
+  }catch(e){console.error('v1.7 Premium AI Score Card 오류',e);return `<div class="ai-score-card"><div class="ai-score-head"><b>AI Score Card</b><span>안정화 모드</span></div><p class="combo-guide">AI Score Card 표시 중 오류가 있었지만 조합 분석은 계속 표시됩니다.</p></div>`}
+}
+function renderRankedCombos(data){
+  try{
+    const combos=makeRankedCombos(data);
+    if(!combos.length)return`<div class="combo-card ai-ranking-shell"><b>🏆 AI 조합 랭킹</b><p class="combo-guide">추천조합을 만들 만큼 동반번호가 부족합니다. 전체 회차로 바꿔보세요.</p></div>`;
+    const maxes={companion:Math.max(...combos.map(c=>c.parts.companion||0),1),trend:Math.max(...combos.map(c=>(c.parts.recent||0)+(c.parts.long||0)),1),structure:Math.max(...combos.map(c=>(c.parts.balance||0)+(c.parts.oddEven||0)),1),longlearn:Math.max(...combos.map(c=>(c.parts.historical||0)+(c.parts.learned||0)),1)};
+    return `<div class="combo-card ai-ranking-shell"><div class="ai-ranking-title"><b>🏆 AI 조합 랭킹 TOP 10</b><span>Explainable AI</span></div><p class="combo-guide">기존 AI Score는 유지하고 Pattern Engine은 참고값으로 분리해 표시합니다.</p>${v170WeightPanel()}${combos.map(c=>`<section class="premium-rank-item"><div class="premium-rank-head"><b>${c.rank}위 · ${c.grade}</b><span>종합 ${c.trust}점</span></div><div class="combo-selected">${c.nums.map(n=>ball(n,true,selectedNums.includes(n)?'selected-ball':'')).join('')}</div>${renderAIScoreCard(c,maxes)}${renderComboReport(c.nums)}<div class="combo-btn-row" style="margin-top:8px"><button onclick="saveRecommendedCombo('${c.nums.join(',')}','${c.grade}',${c.trust})">저장</button><button onclick="analyzeSavedCombo('${c.nums.join(',')}')">적중분석</button></div></section>`).join('')}</div>`;
+  }catch(e){console.error('v1.7 Premium 랭킹 표시 오류',e);return `<div class="combo-card" style="background:#fff7e6"><b>AI 랭킹 안정화 모드</b><p class="combo-guide">랭킹 표시 중 오류가 발생했습니다. 입력번호와 출현이력은 계속 표시됩니다.</p></div>`}
+}
+(function bindV170Accordion(){
+  if(window.__v170AccordionBound)return;
+  window.__v170AccordionBound=true;
+  document.addEventListener('click',function(e){
+    const btn=e.target.closest('.premium-accordion-toggle');
+    if(!btn)return;
+    const panel=document.getElementById(btn.getAttribute('aria-controls'));
+    if(!panel)return;
+    const open=btn.getAttribute('aria-expanded')==='true';
+    btn.setAttribute('aria-expanded',String(!open));
+    panel.classList.toggle('is-open',!open);
+  });
+})();
+
+
+/* v1.9 Phase 2-1 compatibility bridge ------------------------------------
+ * Exposes stable, read-only access to the legacy implementation while the
+ * engines are consumed through independent modules. Existing score formulas
+ * and UI output remain unchanged.
+ */
+window.ComboLegacy = Object.freeze({
+  getState(){ return { lottoData, selectedNums, matchRange, matchMode, includeBonus:includeBonus(), candidatePool25:getCandidatePool25() }; },
+  setSelectedNums(nums){ selectedNums=uniqNums(nums).slice(0,6); return selectedNums.slice(); },
+  sourceRows, rangeMatches, allMatches, minHit, rowPool, frequencyMap, pairScore,
+  companionAnalysis, comboScoreParts, makeRankedCombos, patternSeriesScores,
+  replayScoreFor, flowScoreFor, dreamScoreFor, calcPatternLinkedScoreFor,
+  readPatternScoreFor, renderDreamBridge, setStatusText, renderSummary,
+  renderCompanion, renderSavedCombos, renderHistory, renderAllLegacy,
+  loadSavedCombos, learnedHitRate, comboStructure, getCandidatePool25, candidatePool25Active, candidatePoolRanked
+});
+window.CandidatePool25=Object.freeze({get:getCandidatePool25,isActive:candidatePool25Active,set:setCandidatePool25,clear:clearCandidatePool25,fromInput:setCandidatePool25FromInput});
+window.dispatchEvent(new CustomEvent('combo:legacy-ready'));
+
+
+/* =========================================================
+   v1.9 Phase 3-1 Consensus AI UI
+   Consensus is a ranking weight only; it never blocks a number.
+========================================================= */
+function consensusStars(value){
+  const filled=Math.max(0,Math.min(5,Math.round((Number(value)||0)/20)));
+  return `<span class="consensus-stars" aria-label="별점 ${filled}점">${'★'.repeat(filled)}${'☆'.repeat(5-filled)}</span>`;
+}
+function consensusBar(value){
+  const pct=Math.max(0,Math.min(100,Math.round(Number(value)||0)));
+  return `<span class="consensus-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i style="width:${pct}%"></i></span>`;
+}
+function renderConsensusCard(c){
+  const x=c&&c.consensus;if(!x)return'';
+  const labels={companion:'Companion',frequency:'Frequency',continuity:'Continuity',pattern:'Pattern',replay:'Replay',flow:'Flow',dream:'Dream'};
+  const order=['frequency','continuity','replay','flow','pattern','dream','companion'];
+  const engineScores=x.engineScores||{};
+  const agreementCount=Number.isFinite(x.agreementCount)?x.agreementCount:order.filter(k=>(engineScores[k]||0)>=60).length;
+  const engineCount=Number.isFinite(x.engineCount)?x.engineCount:order.length;
+  const top=(x.details||[]).slice().sort((a,b)=>b.score-a.score).slice(0,6);
+  const engineRows=order.map(key=>{
+    const score=Math.max(0,Math.min(100,Math.round(Number(engineScores[key])||0)));
+    const state=score>=60?'동의':score>=40?'부분 동의':'낮은 지지';
+    return `<div class="consensus-engine-row"><div class="consensus-engine-meta"><b>${labels[key]}</b><span>${consensusStars(score)}</span><strong>${score}%</strong></div>${consensusBar(score)}<small>${state}</small></div>`;
+  }).join('');
+  return `<section class="consensus-card">
+    <div class="consensus-head"><b>🤝 Consensus AI</b><span>${x.label}</span></div>
+    <div class="consensus-overall">
+      <div><small>Overall Agreement</small><b>${consensusStars(x.score)}</b></div>
+      <strong>${x.score}%</strong>
+      ${consensusBar(x.score)}
+      <p><b>${agreementCount} / ${engineCount}</b> Engine Agreement · Classic AI 순위를 최대 15% 보정</p>
+    </div>
+    <div class="consensus-engine-list">${engineRows}</div>
+    <details class="consensus-detail"><summary>번호별 합의 근거</summary><div class="consensus-number-grid">${top.map(d=>`<div><span>${ball(d.number,true,selectedNums.includes(d.number)?'selected-ball':'')}</span><b>${d.score}%</b><small>${d.supporters.length}개 엔진</small></div>`).join('')}</div>${top.map(d=>`<p class="combo-guide"><b>${d.number}번</b> · ${d.supporters.length?d.supporters.map(k=>labels[k]||k).join(' · '):'강한 지지 없음'} · 합의 ${d.score}%</p>`).join('')}</details>
+    <p class="consensus-note">Consensus가 낮아도 번호를 자동 제외하지 않습니다.</p>
+  </section>`;
+}
+const __phase31RenderAIScoreCard=renderAIScoreCard;
+renderAIScoreCard=function(c,maxes){return renderConsensusCard(c)+__phase31RenderAIScoreCard(c,maxes)};
+const __phase31RenderRankedCombos=renderRankedCombos;
+renderRankedCombos=function(data){
+  const html=__phase31RenderRankedCombos(data);
+  return html.replace('기존 AI Score는 유지하고 Pattern Engine은 참고값으로 분리해 표시합니다.','Classic AI를 유지하면서 Consensus AI가 엔진 합의도에 따라 순위를 최대 15% 보정합니다. 번호를 자동 제외하지 않습니다.');
+};
+(function injectConsensusStyle(){if(document.getElementById('consensusPhase32Style'))return;const st=document.createElement('style');st.id='consensusPhase32Style';st.textContent=`
+.consensus-card{border:1px solid #bdd2f2;background:linear-gradient(180deg,#f8fbff 0%,#f3f7ff 100%);border-radius:18px;padding:14px;margin:12px 0;color:#173b73}
+.consensus-head{display:flex;justify-content:space-between;gap:8px;align-items:center;border-bottom:1px solid #dce7f6;padding-bottom:10px}.consensus-head b{font-size:17px}.consensus-head span{font-weight:900;font-size:12px;background:#e9f1ff;border-radius:999px;padding:5px 8px}
+.consensus-overall{background:#fff;border:1px solid #dce7f6;border-radius:15px;padding:12px;margin-top:12px}.consensus-overall>div{display:flex;justify-content:space-between;align-items:center;gap:8px}.consensus-overall>div small{font-weight:900;color:#475467}.consensus-overall>strong{display:block;text-align:right;font-size:24px;margin:-24px 0 6px;color:#173b73}.consensus-overall p{margin:8px 0 0;font-size:12px;color:#667085}
+.consensus-stars{font-size:18px;letter-spacing:1px;color:#e1a800;white-space:nowrap}.consensus-bar{display:block;height:10px;background:#e8eef7;border-radius:999px;overflow:hidden}.consensus-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#4f8ee8,#173b73)}
+.consensus-engine-list{display:grid;gap:8px;margin-top:12px}.consensus-engine-row{background:#fff;border:1px solid #dce7f6;border-radius:13px;padding:9px 10px}.consensus-engine-meta{display:grid;grid-template-columns:1fr auto 44px;gap:6px;align-items:center;margin-bottom:6px}.consensus-engine-meta b{font-size:13px;color:#344054}.consensus-engine-meta .consensus-stars{font-size:13px}.consensus-engine-meta strong{text-align:right;font-size:13px}.consensus-engine-row small{display:block;margin-top:4px;font-size:10px;color:#667085;text-align:right}
+.consensus-number-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}.consensus-number-grid>div{background:#fff;border:1px solid #dce7f6;border-radius:14px;padding:8px 4px;text-align:center}.consensus-number-grid>div>b,.consensus-number-grid>div>small{display:block}.consensus-number-grid>div>b{color:#173b73;margin-top:4px}.consensus-number-grid>div>small{font-size:10px;color:#667085}.consensus-detail{margin-top:12px;border-top:1px dashed #bdd2f2;padding-top:9px}.consensus-detail summary{font-weight:900;color:#173b73;cursor:pointer}.consensus-note{font-size:11px;color:#667085;margin:10px 0 0}
+@media(max-width:390px){.consensus-engine-meta{grid-template-columns:1fr auto 40px}.consensus-stars{letter-spacing:0}.consensus-number-grid{grid-template-columns:repeat(2,1fr)}}
+`;document.head.appendChild(st)})();
