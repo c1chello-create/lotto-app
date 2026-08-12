@@ -29,6 +29,8 @@
     .ai-score-row{display:grid;grid-template-columns:70px 82px 1fr;gap:6px;align-items:center;padding:6px 0;border-top:1px solid #f5e6bd}.ai-score-row:first-of-type{border-top:0}
     .ai-score-row span{font-size:13px;font-weight:900;color:#475467}.ai-score-row b{color:#8a5b00;letter-spacing:1px}.ai-score-row em{font-style:normal;font-size:12px;color:#344054}.ai-score-row small{grid-column:2/4;color:#667085;font-size:11px}
     .ai-score-detail{margin-top:8px;border-top:1px dashed #e8c875;padding-top:8px}.ai-score-detail summary{cursor:pointer;font-weight:900;color:#8a5b00;font-size:13px}
+
+    .pool25-analysis-card{background:#f8fbff;border-color:#9fc0e8}.pool25-analysis-head{display:flex;justify-content:space-between;align-items:center;gap:8px}.pool25-analysis-head span{font-size:11px;font-weight:900;color:#11366b;background:#e9f2ff;border-radius:999px;padding:5px 8px}.pool25-block{border-top:1px solid #dce7f6;padding-top:12px;margin-top:12px}.pool25-block>b,.pool25-common>b{color:#11366b}.pool25-group{display:flex;justify-content:space-between;align-items:center;gap:8px;border-top:1px solid #e7edf5;padding:7px 0}.pool25-group:first-of-type{margin-top:7px}.pool25-group .combo-selected{margin-top:0}.pool25-group strong{white-space:nowrap;color:#11366b}.pool25-common{margin-top:14px;padding:13px;background:#fffaf0;border:1px solid #f2d99b;border-radius:14px}
   </style>
 </head>
 <body>
@@ -62,8 +64,9 @@
     <div id="candidatePool25Status"><p class="combo-guide">후보풀 미설정 · 기존 1~45 탐색 모드</p></div>
   </div>
 
+  <div id="pool25DedicatedAnalysis"></div>
   <div id="status" class="status-msg">데이터를 불러오는 중입니다...</div>
-  <div class="combo-card" style="background:#f8fbff"><b>📌 버전 히스토리</b><p class="combo-guide">v1.9.4 · 후보풀 25개 제한모드 Preview · 기존 AI Score 계산식 유지</p><p class="combo-guide">Classic AI 85% + Consensus 보정 15% · 번호 자동 제외 없음</p><p class="combo-guide"><a href="validation.html" style="font-weight:900;color:#11366b;text-decoration:none">🧪 v2.0 Validation Engine 열기 →</a></p></div>
+  <div class="combo-card" style="background:#f8fbff"><b>📌 버전 히스토리</b><p class="combo-guide">v1.9.5 · 후보풀 25개 전용 통합분석 · 기존 AI Score 계산식 유지</p><p class="combo-guide">Classic AI 85% + Consensus 보정 15% · 번호 자동 제외 없음</p><p class="combo-guide"><a href="validation.html" style="font-weight:900;color:#11366b;text-decoration:none">🧪 v2.0 Validation Engine 열기 →</a></p></div>
   <div id="summary"></div>
   <div id="companion"></div>
   <div class="combo-section-title"><b>조합별 출현 이력</b></div>
@@ -71,7 +74,7 @@
   <div id="history"></div>
 </div>
 <script src="js/interval_pattern_engine.js?v=v190-score-opt-preview1"></script>
-<script src="js/combo.js?v=v194-pool25-01"></script>
+<script src="js/combo.js?v=v195-pool25-analysis"></script>
 <script src="js/engines/companion-engine.js?v=v190-score-opt-preview1"></script>
 <script src="js/engines/pattern-engine.js?v=v190-score-opt-preview1"></script>
 <script src="js/engines/replay-engine.js?v=v190-score-opt-preview1"></script>
@@ -82,7 +85,7 @@
 <script src="js/ai-core.js?v=v190-score-opt-preview1"></script>
 <script src="js/combo-ui.js?v=v190-score-opt-preview1"></script>
 <script src="js/pattern-reference-engine.js?v=v190-score-opt-preview1"></script>
-<script src="js/combo-premium-ui.js?v=v194-pool25-01"></script>
+<script src="js/combo-premium-ui.js?v=v195-pool25-analysis"></script>
 <script src="js/engines/companion-combination-engine.js?v=v193-score-contribution1"></script>
 <script src="js/companion-combination-ui.js?v=v193-score-contribution1"></script>
 <script src="js/engines/score-fusion-engine.js?v=v120-reverse-fast"></script>
