@@ -54,7 +54,7 @@
   <div class="combo-card" id="candidatePool25Card" style="background:#f8fbff;border-color:#bed4ef">
     <b>🎯 후보풀 25개 직접 입력</b>
     <p class="combo-guide">서로 다른 번호 25개를 입력하세요. AI Score 계산식은 바꾸지 않고, TOP10·최적해의 새 번호 탐색 범위만 이 25개로 제한합니다.</p>
-    <textarea id="candidatePool25Input" class="combo-input" rows="4" inputmode="numeric" placeholder="예: 1 2 4 5 7 ... 총 25개"></textarea>
+    <textarea id="candidatePool25Input" class="combo-input" rows="4" inputmode="text" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="예: 1 2 4 5 7 ... 총 25개 (공백 또는 쉼표로 구분)"></textarea>
     <div class="combo-btn-row">
       <button type="button" onclick="setCandidatePool25FromInput()" style="background:#11366b;color:#fff;border-color:#11366b">25개 후보풀 확정</button>
       <button type="button" onclick="clearCandidatePool25()">후보풀 해제</button>
