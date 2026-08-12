@@ -313,3 +313,13 @@ function renderRankedCombos(data){
   });
   global.ScoreOptimizerPreview=Object.freeze({run,apply,shell,getState:()=>({...state})});
 })(window);
+
+/* v1.9.5 Candidate Pool 25 dedicated analysis render bridge */
+(function bindPool25DedicatedRender(global){
+  function render(){try{global.Pool25DedicatedAnalysis&&global.Pool25DedicatedAnalysis.render()}catch(e){console.error('Pool25 dedicated analysis UI error',e)}}
+  document.addEventListener('click',e=>{if(e.target.closest('#analyzeBtn')||e.target.closest('#candidatePool25Card'))setTimeout(render,0)});
+  global.addEventListener('combo:legacy-ready',()=>setTimeout(render,0));
+  const oldRenderAll=global.ComboUI&&global.ComboUI.renderAll;
+  if(oldRenderAll&&!global.__pool25ComboUIWrapped){global.__pool25ComboUIWrapped=true;global.ComboUI.renderAll=function(){const r=oldRenderAll.apply(this,arguments);setTimeout(render,0);return r;}}
+  setTimeout(render,250);
+})(window);

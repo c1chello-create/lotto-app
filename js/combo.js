@@ -2714,3 +2714,77 @@ renderRankedCombos=function(data){
 .consensus-number-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}.consensus-number-grid>div{background:#fff;border:1px solid #dce7f6;border-radius:14px;padding:8px 4px;text-align:center}.consensus-number-grid>div>b,.consensus-number-grid>div>small{display:block}.consensus-number-grid>div>b{color:#173b73;margin-top:4px}.consensus-number-grid>div>small{font-size:10px;color:#667085}.consensus-detail{margin-top:12px;border-top:1px dashed #bdd2f2;padding-top:9px}.consensus-detail summary{font-weight:900;color:#173b73;cursor:pointer}.consensus-note{font-size:11px;color:#667085;margin:10px 0 0}
 @media(max-width:390px){.consensus-engine-meta{grid-template-columns:1fr auto 40px}.consensus-stars{letter-spacing:0}.consensus-number-grid{grid-template-columns:repeat(2,1fr)}}
 `;document.head.appendChild(st)})();
+
+/* =========================================================
+   v1.9.5 Candidate Pool 25 Dedicated Analysis
+   - 기존 선택번호 연관 동반조합 / AI Score 계산식 변경 없음
+   - 25개 후보풀 내부에서만 Pattern·동반출현·공통후보를 별도 분석
+========================================================= */
+(function pool25DedicatedAnalysis(global){
+  'use strict';
+  if(global.Pool25DedicatedAnalysis)return;
+  const clean=a=>[...new Set((a||[]).map(Number).filter(n=>n>=1&&n<=45))].sort((a,b)=>a-b);
+  const topNums=(list,limit=10)=>clean((list||[]).slice(0,limit).map(x=>x.n));
+  function state(){
+    const pool=clean(global.CandidatePool25&&global.CandidatePool25.get());
+    const selected=clean((global.ComboLegacy&&global.ComboLegacy.getState().selectedNums)||[]);
+    return {pool,selected,active:pool.length===25};
+  }
+  function aiCandidates(data,pool){
+    let combos=[];
+    try{combos=makeRankedCombos(data)||[]}catch(e){}
+    const freq={};pool.forEach(n=>freq[n]=0);
+    combos.forEach((c,i)=>(c.nums||[]).forEach(n=>{if(n in freq)freq[n]+=Math.max(1,10-i)}));
+    return Object.entries(freq).map(([n,score])=>({n:Number(n),score})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score||a.n-b.n).slice(0,12);
+  }
+  function patternCandidates(pool,selected){
+    let src=[];
+    try{src=(patternSeriesScores(selected.length>=2?selected:pool.slice(0,6)).candidateScores||[])}catch(e){}
+    const map=new Map(src.map(x=>[Number(x.n),x]));
+    return pool.map(n=>map.get(n)||{n,score:0,two:0,three:0,pair:0}).sort((a,b)=>(b.score||0)-(a.score||0)||a.n-b.n).slice(0,12);
+  }
+  function companionCandidates(pool,selected){
+    const rows=sourceRows(); const counts={}; pool.forEach(n=>counts[n]=0);
+    rows.forEach(row=>{
+      const rp=[...new Set(rowPool(row))];
+      if(selected.length && !selected.some(n=>rp.includes(n)))return;
+      rp.forEach(n=>{if(counts[n]!=null&&!selected.includes(n))counts[n]++});
+    });
+    return Object.entries(counts).map(([n,count])=>({n:Number(n),count})).filter(x=>x.count>0).sort((a,b)=>b.count-a.count||a.n-b.n).slice(0,12);
+  }
+  function linkedGroups(pool,selected){
+    const rows=sourceRows(), counts=new Map();
+    rows.forEach(row=>{
+      const rp=[...new Set(rowPool(row).filter(n=>pool.includes(n)))];
+      if(selected.length && !selected.some(n=>rp.includes(n)))return;
+      const others=rp.filter(n=>!selected.includes(n));
+      combinations(others,3).forEach(g=>{const k=g.join(',');counts.set(k,(counts.get(k)||0)+1)});
+    });
+    return [...counts].map(([key,count])=>({nums:key.split(',').map(Number),count})).filter(x=>x.count>=2).sort((a,b)=>b.count-a.count||a.nums.join(',').localeCompare(b.nums.join(','))).slice(0,6);
+  }
+  function common(ai,pattern,companion){
+    const sets=[new Set(topNums(ai)),new Set(topNums(pattern)),new Set(topNums(companion))];
+    const all=new Set([...sets[0],...sets[1],...sets[2]]), out=[];
+    all.forEach(n=>{const hit=sets.reduce((s,x)=>s+(x.has(n)?1:0),0);if(hit>=2)out.push({n,hit,ai:sets[0].has(n),pattern:sets[1].has(n),companion:sets[2].has(n)})});
+    return out.sort((a,b)=>b.hit-a.hit||a.n-b.n);
+  }
+  const balls=(list,extra='')=>list.length?list.map(x=>ball(Number(x.n??x),true,extra)).join(''):'<span class="combo-guide">해당 후보가 없습니다.</span>';
+  function render(){
+    const box=document.getElementById('pool25DedicatedAnalysis'); if(!box)return;
+    const s=state();
+    if(!s.active){box.innerHTML='';return;}
+    let data;try{data=companionAnalysis()}catch(e){data={rows:[],top:[],counts:{}}}
+    const ai=aiCandidates(data,s.pool), pattern=patternCandidates(s.pool,s.selected), companion=companionCandidates(s.pool,s.selected), groups=linkedGroups(s.pool,s.selected), overlap=common(ai,pattern,companion);
+    box.innerHTML=`<div class="combo-card pool25-analysis-card">
+      <div class="pool25-analysis-head"><b>🎯 후보풀 25 전용 통합분석</b><span>25개 내부 전용</span></div>
+      <p class="combo-guide">기존 선택번호 연관 동반조합은 그대로 유지합니다. 아래 결과는 확정한 25개 번호 안에서만 별도로 계산합니다.</p>
+      <section class="pool25-block"><b>① 기존 AI Score TOP10 연계 후보</b><p class="combo-guide">기존 AI Score 계산식으로 만든 TOP10 조합에서 반복된 25개 내부 번호입니다.</p><div class="combo-selected">${balls(ai)}</div></section>
+      <section class="pool25-block"><b>② 25개 내부 Pattern 후보</b><p class="combo-guide">기존 Pattern 신호를 사용하되 표시 후보를 25개 내부로 제한합니다.</p><div class="combo-selected">${balls(pattern)}</div></section>
+      <section class="pool25-block"><b>③ 25개 내부 동반출현 후보</b><p class="combo-guide">${s.selected.length?s.selected.join('·')+'번과 연결된 회차':'현재 범위'}에서 25개 내부 번호만 집계합니다.</p><div class="combo-selected">${balls(companion)}</div></section>
+      <section class="pool25-block"><b>🔗 25개 전용 선택번호 연관 동반조합</b>${groups.length?groups.map(g=>`<div class="pool25-group"><div class="combo-selected">${g.nums.map(n=>ball(n,true)).join('')}</div><strong>${g.count}회</strong></div>`).join(''):'<p class="combo-guide">현재 범위에서 2회 이상 반복된 3개 연관조합이 없습니다.</p>'}</section>
+      <section class="pool25-common"><b>④ 세 분석 공통 후보번호</b><p class="combo-guide">AI TOP10 · Pattern · 동반출현 중 2개 이상 분석에서 반복된 번호입니다. 3개 분석 공통은 가장 먼저 표시합니다.</p><div class="combo-selected">${overlap.length?overlap.map(x=>ball(x.n,true,x.hit===3?'selected-ball':'')).join(''):'<span class="combo-guide">현재 공통 후보가 없습니다.</span>'}</div>${overlap.length?`<p class="combo-guide">${overlap.map(x=>`${x.n}번 ${x.hit}/3`).join(' · ')}</p>`:''}</section>
+      <p class="combo-guide">※ 이 카드는 후보를 비교·압축하기 위한 참고 분석이며 번호를 자동 제외하지 않습니다.</p>
+    </div>`;
+  }
+  global.Pool25DedicatedAnalysis=Object.freeze({render});
+})(window);
