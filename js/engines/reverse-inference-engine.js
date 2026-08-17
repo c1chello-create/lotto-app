@@ -196,6 +196,153 @@
     return [...m.values()].sort((a,b)=>b.count-a.count||b.bestScore-a.bestScore||b.bestDelta-a.bestDelta||a.n-b.n).slice(0,limit);
   }
 
+
+  function candidatePool25(){
+    try{
+      if(global.CandidatePool25?.isActive?.()){
+        const nums=clean(global.CandidatePool25.get?.()||[]);
+        if(nums.length===25)return nums;
+      }
+    }catch(e){}
+    try{
+      const nums=clean(global.ComboUI?.getState?.()?.candidatePool25||[]);
+      if(nums.length===25)return nums;
+    }catch(e){}
+    try{
+      const raw=global.document?.getElementById('candidatePool25Input')?.value||'';
+      const nums=clean(raw.split(/[\s,]+/));
+      if(nums.length===25)return nums;
+    }catch(e){}
+    return [];
+  }
+
+  function combinations(arr,k){
+    const out=[];
+    const src=arr.slice();
+    function walk(start,acc){
+      if(acc.length===k){out.push(acc.slice());return;}
+      const need=k-acc.length;
+      for(let i=start;i<=src.length-need;i++){
+        acc.push(src[i]);walk(i+1,acc);acc.pop();
+      }
+    }
+    walk(0,[]);return out;
+  }
+
+  function updateTop(list,item,limit=10){
+    if(!item)return list;
+    const merged=dedupe(list.concat(item));
+    return merged.slice(0,limit);
+  }
+
+  async function runPrecise(opts={}){
+    if(state.running)return {error:'이미 역산 분석을 실행 중입니다.'};
+    const base=clean(opts.base||baseSelection());
+    if(base.length!==6)return {error:'정밀 역산은 번호 6개가 필요합니다.'};
+    if(!global.ScoreFusionEngine?.evaluateCandidateGate||!global.ScoreFusionEngine?.evaluateCandidate)return {error:'ScoreFusionEngine 연결이 필요합니다.'};
+    const pool=clean(opts.pool||candidatePool25());
+    if(pool.length!==25)return {error:'🎯 목표점수 정밀 역산은 25개 후보풀을 먼저 확정해야 합니다.'};
+    const missing=base.filter(n=>!pool.includes(n));
+    if(missing.length)return {error:`현재 분석번호 ${missing.join('·')}번이 25개 후보풀에 없습니다.`};
+    const target=Math.max(60,Math.min(98,Number(opts.target)||95));
+    const maxReplace=Math.max(1,Math.min(3,Number(opts.maxReplace)||3));
+    const onProgress=typeof opts.onProgress==='function'?opts.onProgress:()=>{};
+    const cache=createRunCache(base,target);
+    const addPool=pool.filter(n=>!base.includes(n));
+    state.running=true;
+    try{
+      onProgress(`25개 후보풀 정밀 역산 준비 · 목표 ${target}점`);
+      const baseline=evaluateReal(base,base,cache);
+      const sameVirtual=evaluateVirtualFull(base,base,cache);
+      const stages=[];
+      let targetHits=[];
+      let targetGateSurvivors=[];
+      const fallback=[];
+      let totalExpected=0,totalDone=0,targetPruned=0,targetGatePassed=0;
+
+      for(let depth=1;depth<=maxReplace;depth++){
+        const removals=combinations(base,depth);
+        const additions=combinations(addPool,depth);
+        const stageTotal=removals.length*additions.length;
+        totalExpected+=stageTotal;
+      }
+
+      for(let depth=1;depth<=maxReplace;depth++){
+        const removals=combinations(base,depth);
+        const additions=combinations(addPool,depth);
+        const stageTotal=removals.length*additions.length;
+        let done=0,pruned=0,gatePassed=0,met=0,stageBest=null;
+        onProgress(`${depth}개 교체 완전탐색 시작 · ${stageTotal.toLocaleString()}개 조합`);
+        for(const removed of removals){
+          const kept=base.filter(n=>!removed.includes(n));
+          for(const added of additions){
+            const nums=clean(kept.concat(added));
+            const virtual=evaluateVirtualGate(base,nums,target,cache);
+            done++;totalDone++;
+            if(!virtual||virtual.pruned){
+              pruned++;targetPruned++;
+              fallback.push({nums,replaceCount:depth,upperBound:Number(virtual?.upperBound)||0});
+            }else{
+              gatePassed++;targetGatePassed++;
+              const real=evaluateReal(base,nums,cache);
+              const item=decorate(base,nums,real,virtual,depth,{upperBound:virtual.upperBound});
+              item.targetMet=item.after>=target;
+              if(!stageBest||compare(item,stageBest)<0)stageBest=item;
+              targetGateSurvivors.push(item);
+              if(item.targetMet){met++;targetHits.push(item);}
+            }
+            if(totalDone%20===0){
+              onProgress(`${depth}개 교체 ${done.toLocaleString()}/${stageTotal.toLocaleString()} · 전체 ${totalDone.toLocaleString()}/${totalExpected.toLocaleString()} · 목표도달 ${targetHits.length}개`);
+              await sleep();
+            }
+          }
+        }
+        stages.push({replaceCount:depth,count:done,kept:gatePassed,pruned,met,best:stageBest,complete:true});
+      }
+
+      targetHits=dedupe(targetHits);
+      targetGateSurvivors=dedupe(targetGateSurvivors);
+      let reached=targetHits.length>0;
+      let top=reached?targetHits.slice(0,10):targetGateSurvivors.slice(0,10);
+      let fallbackRefined=0;
+
+      // 목표 도달 조합이 없을 때는 목표 Gate에서 탈락했던 후보도 upperBound 순으로 재검산해
+      // 25개 후보풀 전체에서의 실제 최고 TOP10을 정확히 확정합니다.
+      if(!reached){
+        fallback.sort((a,b)=>b.upperBound-a.upperBound||a.replaceCount-b.replaceCount||key(a.nums).localeCompare(key(b.nums),undefined,{numeric:true}));
+        onProgress(`목표 ${target}점 이상 조합 없음 · 실제 최고점 TOP10을 확정하는 중...`);
+        for(let i=0;i<fallback.length;i++){
+          const f=fallback[i];
+          const threshold=top.length>=10?(Number(top[9]?.after)||0):-1;
+          if(top.length>=10 && f.upperBound < threshold-0.51)break;
+          const virtual=evaluateVirtualFull(base,f.nums,cache);
+          fallbackRefined++;
+          if(virtual){
+            const real=evaluateReal(base,f.nums,cache);
+            const item=decorate(base,f.nums,real,virtual,f.replaceCount,{upperBound:f.upperBound,fallbackRefined:true});
+            item.targetMet=item.after>=target;
+            top=updateTop(top,item,10);
+            const st=stages.find(x=>x.replaceCount===f.replaceCount);
+            if(st&&(!st.best||compare(item,st.best)<0))st.best=item;
+          }
+          if(fallbackRefined%20===0){onProgress(`최고점 재검산 ${fallbackRefined.toLocaleString()}개 · 현재 최고 ${top[0]?.after??'-'}점`);await sleep();}
+        }
+      }
+
+      const best=top[0]||null;
+      const result={
+        mode:'precise',exact:true,base,target,maxReplace,pool25:pool,poolSize:pool.length,
+        baseline,sameVirtual,best,top,stages,reached,targetMatchCount:targetHits.length,
+        reachedReplace:reached?(targetHits[0]?.replaceCount||null):null,
+        totals:{evaluated:totalDone,kept:targetGatePassed,pruned:targetPruned,fallbackRefined,totalExpected},
+        virtualRound:nextRound(),
+        note:`25개 후보풀 안에서 1~${maxReplace}개 교체 조합 ${totalDone.toLocaleString()}개를 빠짐없이 검사했습니다. 목표 ${target}점 가능성은 Pattern 최대 기여까지 포함한 안전한 상한값으로 먼저 판정합니다. 목표 도달 조합이 없으면 상한값 순 재검산으로 실제 최고 TOP10을 확정합니다. Fusion 계산식은 변경하지 않았습니다.`
+      };
+      state.last=result;return result;
+    }catch(e){console.error('ReverseInferenceEngine precise',e);return {error:e.message||String(e)};}
+    finally{state.running=false;invalidate();}
+  }
+
   async function run(opts={}){
     if(state.running)return {error:'이미 역산 분석을 실행 중입니다.'};
     const base=clean(opts.base||baseSelection());
@@ -266,5 +413,5 @@
     finally{state.running=false;invalidate();}
   }
 
-  global.ReverseInferenceEngine=Object.freeze({run,getState:()=>({...state}),evaluateReal,evaluateVirtualFull});
+  global.ReverseInferenceEngine=Object.freeze({run,runPrecise,getState:()=>({...state}),evaluateReal,evaluateVirtualFull,candidatePool25});
 })(window);
