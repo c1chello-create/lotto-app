@@ -249,9 +249,11 @@
     const onProgress=typeof opts.onProgress==='function'?opts.onProgress:()=>{};
     const cache=createRunCache(base,target);
     const addPool=pool.filter(n=>!base.includes(n));
+    const startedAt=(global.performance&&typeof global.performance.now==='function')?global.performance.now():Date.now();
+    const yieldEvery=Math.max(120,Math.min(400,Number(opts.yieldEvery)||240));
     state.running=true;
     try{
-      onProgress(`25개 후보풀 정밀 역산 준비 · 목표 ${target}점`);
+      onProgress(`25개 후보풀 정밀 역산 준비 · 목표 ${target}점 · 고속화 v2`);
       const baseline=evaluateReal(base,base,cache);
       const sameVirtual=evaluateVirtualFull(base,base,cache);
       const stages=[];
@@ -291,8 +293,10 @@
               targetGateSurvivors.push(item);
               if(item.targetMet){met++;targetHits.push(item);}
             }
-            if(totalDone%20===0){
-              onProgress(`${depth}개 교체 ${done.toLocaleString()}/${stageTotal.toLocaleString()} · 전체 ${totalDone.toLocaleString()}/${totalExpected.toLocaleString()} · 목표도달 ${targetHits.length}개`);
+            if(totalDone%yieldEvery===0){
+              const now=(global.performance&&typeof global.performance.now==='function')?global.performance.now():Date.now();
+              const sec=Math.max(.001,(now-startedAt)/1000),rate=Math.round(totalDone/sec);
+              onProgress(`${depth}개 교체 ${done.toLocaleString()}/${stageTotal.toLocaleString()} · 전체 ${totalDone.toLocaleString()}/${totalExpected.toLocaleString()} · 목표도달 ${targetHits.length}개 · 초당 ${rate.toLocaleString()}개`);
               await sleep();
             }
           }
@@ -325,18 +329,21 @@
             const st=stages.find(x=>x.replaceCount===f.replaceCount);
             if(st&&(!st.best||compare(item,st.best)<0))st.best=item;
           }
-          if(fallbackRefined%20===0){onProgress(`최고점 재검산 ${fallbackRefined.toLocaleString()}개 · 현재 최고 ${top[0]?.after??'-'}점`);await sleep();}
+          if(fallbackRefined%60===0){onProgress(`최고점 재검산 ${fallbackRefined.toLocaleString()}개 · 현재 최고 ${top[0]?.after??'-'}점`);await sleep();}
         }
       }
 
       const best=top[0]||null;
+      const endedAt=(global.performance&&typeof global.performance.now==='function')?global.performance.now():Date.now();
+      const elapsedMs=Math.max(0,endedAt-startedAt),elapsedSec=elapsedMs/1000;
       const result={
         mode:'precise',exact:true,base,target,maxReplace,pool25:pool,poolSize:pool.length,
         baseline,sameVirtual,best,top,stages,reached,targetMatchCount:targetHits.length,
         reachedReplace:reached?(targetHits[0]?.replaceCount||null):null,
         totals:{evaluated:totalDone,kept:targetGatePassed,pruned:targetPruned,fallbackRefined,totalExpected},
+        performance:{elapsedMs:Math.round(elapsedMs),elapsedSec:Number(elapsedSec.toFixed(2)),perSecond:elapsedSec>0?Math.round(totalDone/elapsedSec):0,yieldEvery},
         virtualRound:nextRound(),
-        note:`25개 후보풀 안에서 1~${maxReplace}개 교체 조합 ${totalDone.toLocaleString()}개를 빠짐없이 검사했습니다. 목표 ${target}점 가능성은 Pattern 최대 기여까지 포함한 안전한 상한값으로 먼저 판정합니다. 목표 도달 조합이 없으면 상한값 순 재검산으로 실제 최고 TOP10을 확정합니다. Fusion 계산식은 변경하지 않았습니다.`
+        note:`25개 후보풀 안에서 1~${maxReplace}개 교체 조합 ${totalDone.toLocaleString()}개를 빠짐없이 검사했습니다. 고속화 v2는 반복 데이터 스캔과 화면 갱신 횟수만 줄이며, 목표 Gate·Pattern·Fusion 계산식과 완전탐색 범위는 변경하지 않습니다. 목표 ${target}점 가능성은 Pattern 최대 기여까지 포함한 안전한 상한값으로 판정하고, 미도달 시 상한값 순 재검산으로 실제 최고 TOP10을 확정합니다.`
       };
       state.last=result;return result;
     }catch(e){console.error('ReverseInferenceEngine precise',e);return {error:e.message||String(e)};}

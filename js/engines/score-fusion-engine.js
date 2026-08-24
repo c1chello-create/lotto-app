@@ -43,10 +43,34 @@
     for(let i=0;i<n.length;i++)for(let j=i+1;j<n.length;j++)out.push([n[i],n[j]]);
     return out;
   }
+
+  // Reverse precise speed v2: 과거 회차의 쌍출현 행렬을 재사용합니다.
+  // 가상 +1회는 행렬을 다시 만들지 않고 해당 후보의 15개 쌍에만 +1 효과를 적용합니다.
+  const __pairMatrixCache=new Map();
+  function __frequencyContext(scope=currentRange()){
+    const raw=global.LOTTO_DATA||global.lottoData||[];
+    const virtual=(raw||[]).find(r=>r&&r.__reverseVirtual)||null;
+    const real=(raw||[]).filter(r=>!(r&&r.__reverseVirtual)).slice().sort((a,b)=>Number(b.round)-Number(a.round));
+    const bonus=includeBonus();
+    const wanted=scope==='all'?real.length:Math.max(0,(Number(scope)||50)-(virtual?1:0));
+    const limit=Math.min(real.length,wanted);
+    const first=real[0]?.round||0,last=real[real.length-1]?.round||0;
+    const ck=`${real.length}|${first}|${last}|${scope}|${bonus?'B':'N'}|${limit}`;
+    let matrix=__pairMatrixCache.get(ck);
+    if(!matrix){
+      matrix=Array.from({length:46},()=>new Uint16Array(46));
+      for(let r=0;r<limit;r++){
+        const p=rowPool(real[r],bonus);
+        for(let i=0;i<p.length;i++)for(let j=i+1;j<p.length;j++){const a=p[i],b=p[j];matrix[a][b]++;matrix[b][a]++;}
+      }
+      __pairMatrixCache.set(ck,matrix);
+    }
+    return {matrix,virtualNums:virtual?clean(virtual.numbers||[]):null,sourceCount:limit+(virtual?1:0)};
+  }
   function frequencyMetrics(nums,scope=currentRange()){
-    const source=scopedRows(scope),pairs=combinationPairs(nums);
-    const pairRows=pairs.map(pair=>({pair,count:pairCount(pair[0],pair[1],source)}));
-    const maxPossible=Math.max(1,source.length);
+    const pairs=combinationPairs(nums),ctx=__frequencyContext(scope),vset=ctx.virtualNums?new Set(ctx.virtualNums):null;
+    const pairRows=pairs.map(pair=>({pair,count:Number(ctx.matrix[pair[0]]?.[pair[1]]||0)+(vset&&vset.has(pair[0])&&vset.has(pair[1])?1:0)}));
+    const maxPossible=Math.max(1,ctx.sourceCount);
     const rates=pairRows.map(x=>x.count/maxPossible);
     const sorted=pairRows.slice().sort((a,b)=>b.count-a.count);
     const top=sorted.slice(0,Math.min(5,sorted.length));
@@ -59,7 +83,7 @@
       const links=related.slice().sort((a,b)=>b.count-a.count).slice(0,3).map(x=>({n:x.pair[0]===n?x.pair[1]:x.pair[0],count:x.count}));
       return {n,score:value,links};
     }).sort((a,b)=>b.score-a.score||a.n-b.n);
-    return {score,averageRate:Number((rawAvg*100).toFixed(2)),top,numberContributions,sourceCount:source.length};
+    return {score,averageRate:Number((rawAvg*100).toFixed(2)),top,numberContributions,sourceCount:ctx.sourceCount};
   }
   function patternMetrics(nums){
     const eng=global.CompanionCombinationEngine;
@@ -96,7 +120,7 @@
   function classicDataset(base,candidates){
     let data=null,allFreq=null;
     try{data=typeof global.companionAnalysis==='function'?global.companionAnalysis():null;}catch(e){}
-    try{allFreq=typeof global.frequencyMap==='function'?global.frequencyMap(rows()):null;}catch(e){}
+    try{allFreq=typeof global.frequencyMap==='function'?global.frequencyMap(global.LOTTO_DATA||global.lottoData||[]):null;}catch(e){}
     const all=[{nums:base,source:'current'},...candidates.map(x=>({nums:x.nums,source:'rank',rank:x.rank,known:x.trust}))];
     const scored=all.map(x=>({...x,parts:rawClassic(x.nums,data,allFreq)}));
     const raws=scored.map(x=>Number(x.parts?.total)||0),min=Math.min(...raws),max=Math.max(...raws);

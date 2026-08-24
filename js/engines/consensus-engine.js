@@ -37,9 +37,9 @@
     };
     return {raw:p,sets};
   }
-  function scoreCombo(nums, companionData){
+  function scoreCombo(nums, companionData, preparedContext){
     nums=[...new Set((nums||[]).map(Number))].filter(n=>n>=1&&n<=45).sort((a,b)=>a-b);
-    const ctx=context(companionData), ps=patternSignals(nums);
+    const ctx=preparedContext||context(companionData), ps=patternSignals(nums);
     const details=nums.map(n=>{
       const scores={
         companion:ctx.companion[n]||0,
@@ -69,9 +69,11 @@
   function enrich(candidates, companionData){
     if(!Array.isArray(candidates)||!candidates.length)return [];
     const totals=candidates.map(c=>Number(c.parts&&c.parts.total)||0), min=Math.min(...totals), max=Math.max(...totals);
+    // 동일 후보 묶음에서는 frequency/continuity/companion context가 완전히 동일하므로 1회만 계산합니다.
+    const preparedContext=context(companionData);
     return candidates.map(c=>{
       const classic=clamp(62+((c.parts.total-min)/(max-min||1))*34);
-      const consensus=scoreCombo(c.nums,companionData);
+      const consensus=scoreCombo(c.nums,companionData,preparedContext);
       const finalScore=clamp(classic*.85+consensus.score*.15);
       return {...c,classicTrust:classic,consensus,finalScore};
     }).sort((a,b)=>b.finalScore-a.finalScore||b.classicTrust-a.classicTrust||a.nums.join('').localeCompare(b.nums.join('')));
