@@ -19,9 +19,13 @@
   function invalidate(){
     try{global.CompanionCombinationEngine?.clearOptimizerCache?.();}catch(e){}
   }
+  let __nextRoundCache={source:null,length:-1,value:1};
   function nextRound(){
     const all=rows();
-    return (all.reduce((m,r)=>Math.max(m,Number(r.round)||0),0)||0)+1;
+    if(__nextRoundCache.source===all&&__nextRoundCache.length===all.length)return __nextRoundCache.value;
+    const value=(all.reduce((m,r)=>Math.max(m,Number(r.round)||0),0)||0)+1;
+    __nextRoundCache={source:all,length:all.length,value};
+    return value;
   }
   function virtualRow(nums){
     return {round:nextRound(),date:'가상 +1회',numbers:clean(nums),bonus:null,__reverseVirtual:true};
@@ -34,6 +38,16 @@
     try{return fn(row);}finally{
       const idx=all.indexOf(row);if(idx>=0)all.splice(idx,1);
       invalidate();
+    }
+  }
+
+  // Classic/Frequency 상한 계산 전용. Pattern 엔진 캐시를 건드리지 않습니다.
+  function withVirtualDrawLite(nums,fn){
+    const all=rows();
+    const row=virtualRow(nums);
+    all.unshift(row);
+    try{return fn(row);}finally{
+      const idx=all.indexOf(row);if(idx>=0)all.splice(idx,1);
     }
   }
   function scopeSignature(){
@@ -239,7 +253,10 @@
     if(state.running)return {error:'이미 역산 분석을 실행 중입니다.'};
     const base=clean(opts.base||baseSelection());
     if(base.length!==6)return {error:'정밀 역산은 번호 6개가 필요합니다.'};
-    if(!global.ScoreFusionEngine?.evaluateCandidateGate||!global.ScoreFusionEngine?.evaluateCandidate)return {error:'ScoreFusionEngine 연결이 필요합니다.'};
+    const sf=global.ScoreFusionEngine;
+    if(!sf?.evaluateCandidateBound||!sf?.completeCandidateFromBound||!sf?.estimateVirtualUpperBoundFast){
+      return {error:'Fast v3용 ScoreFusionEngine 연결이 필요합니다.'};
+    }
     const pool=clean(opts.pool||candidatePool25());
     if(pool.length!==25)return {error:'🎯 목표점수 정밀 역산은 25개 후보풀을 먼저 확정해야 합니다.'};
     const missing=base.filter(n=>!pool.includes(n));
@@ -250,86 +267,132 @@
     const cache=createRunCache(base,target);
     const addPool=pool.filter(n=>!base.includes(n));
     const startedAt=(global.performance&&typeof global.performance.now==='function')?global.performance.now():Date.now();
-    const yieldEvery=Math.max(120,Math.min(400,Number(opts.yieldEvery)||240));
+    const yieldEvery=Math.max(300,Math.min(1200,Number(opts.yieldEvery)||600));
     state.running=true;
+    let sessionStarted=false;
     try{
-      onProgress(`25개 후보풀 정밀 역산 준비 · 목표 ${target}점 · 고속화 v2`);
+      onProgress(`25개 후보풀 정밀 역산 준비 · 목표 ${target}점 · Fast v3`);
+      // 사용자가 보던 현재점수/현재조합+1회 값은 기존 방식으로 1회만 계산합니다.
       const baseline=evaluateReal(base,base,cache);
       const sameVirtual=evaluateVirtualFull(base,base,cache);
-      const stages=[];
-      let targetHits=[];
-      let targetGateSurvivors=[];
-      const fallback=[];
-      let totalExpected=0,totalDone=0,targetPruned=0,targetGatePassed=0;
 
+      sf.beginPreciseSession?.(base);
+      sessionStarted=true;
+
+      const stages=[];
+      const stageMap=new Map();
+      let totalExpected=0;
       for(let depth=1;depth<=maxReplace;depth++){
-        const removals=combinations(base,depth);
-        const additions=combinations(addPool,depth);
-        const stageTotal=removals.length*additions.length;
+        const stageTotal=combinations(base,depth).length*combinations(addPool,depth).length;
         totalExpected+=stageTotal;
+        const st={replaceCount:depth,count:0,kept:0,pruned:0,met:0,best:null,complete:false,fastPruned:0,exactBound:0};
+        stages.push(st);stageMap.set(depth,st);
       }
 
+      const records=[];
+      let totalDone=0,targetPruned=0,targetGatePassed=0;
+      let exactBoundCount=0,patternEvaluated=0;
+      let targetHits=[];
+
+      // 1차: 매우 싼 안전 상한으로 95점 가능성이 전혀 없는 후보는 Classic 계산 전 제거합니다.
+      // 빠른 상한을 통과한 후보만 정확한 Classic/Frequency 상한과 Pattern을 계산합니다.
       for(let depth=1;depth<=maxReplace;depth++){
         const removals=combinations(base,depth);
         const additions=combinations(addPool,depth);
         const stageTotal=removals.length*additions.length;
-        let done=0,pruned=0,gatePassed=0,met=0,stageBest=null;
-        onProgress(`${depth}개 교체 완전탐색 시작 · ${stageTotal.toLocaleString()}개 조합`);
+        const st=stageMap.get(depth);
+        onProgress(`${depth}개 교체 Fast v3 탐색 시작 · ${stageTotal.toLocaleString()}개`);
         for(const removed of removals){
           const kept=base.filter(n=>!removed.includes(n));
           for(const added of additions){
             const nums=clean(kept.concat(added));
-            const virtual=evaluateVirtualGate(base,nums,target,cache);
-            done++;totalDone++;
-            if(!virtual||virtual.pruned){
-              pruned++;targetPruned++;
-              fallback.push({nums,replaceCount:depth,upperBound:Number(virtual?.upperBound)||0});
+            const fast=sf.estimateVirtualUpperBoundFast(base,nums);
+            const rec={nums,replaceCount:depth,fastUpperBound:Number(fast?.upperBound)||0,bound:null,virtual:null};
+            records.push(rec);
+            st.count++;totalDone++;
+
+            // final total은 Math.round이므로 target-0.5 미만일 때만 안전하게 제외합니다.
+            if(!fast||rec.fastUpperBound<target-0.5){
+              st.pruned++;st.fastPruned++;targetPruned++;
             }else{
-              gatePassed++;targetGatePassed++;
-              const real=evaluateReal(base,nums,cache);
-              const item=decorate(base,nums,real,virtual,depth,{upperBound:virtual.upperBound});
-              item.targetMet=item.after>=target;
-              if(!stageBest||compare(item,stageBest)<0)stageBest=item;
-              targetGateSurvivors.push(item);
-              if(item.targetMet){met++;targetHits.push(item);}
+              const bound=withVirtualDrawLite(nums,()=>sf.evaluateCandidateBound(base,nums));
+              rec.bound=bound;exactBoundCount++;st.exactBound++;
+              if(!bound||Number(bound.upperBound)<target-0.5){
+                st.pruned++;targetPruned++;
+              }else{
+                st.kept++;targetGatePassed++;
+                const virtual=withVirtualDraw(nums,()=>sf.completeCandidateFromBound(bound));
+                rec.virtual=virtual;patternEvaluated++;
+                if(virtual){
+                  const real=evaluateReal(base,nums,cache);
+                  const item=decorate(base,nums,real,virtual,depth,{upperBound:bound.upperBound});
+                  item.targetMet=item.after>=target;
+                  if(!st.best||compare(item,st.best)<0)st.best=item;
+                  if(item.targetMet){st.met++;targetHits.push(item);}
+                }
+              }
             }
+
             if(totalDone%yieldEvery===0){
               const now=(global.performance&&typeof global.performance.now==='function')?global.performance.now():Date.now();
               const sec=Math.max(.001,(now-startedAt)/1000),rate=Math.round(totalDone/sec);
-              onProgress(`${depth}개 교체 ${done.toLocaleString()}/${stageTotal.toLocaleString()} · 전체 ${totalDone.toLocaleString()}/${totalExpected.toLocaleString()} · 목표도달 ${targetHits.length}개 · 초당 ${rate.toLocaleString()}개`);
+              onProgress(`${depth}개 교체 ${st.count.toLocaleString()}/${stageTotal.toLocaleString()} · 전체 ${totalDone.toLocaleString()}/${totalExpected.toLocaleString()} · 목표도달 ${targetHits.length}개 · 초당 ${rate.toLocaleString()}개`);
               await sleep();
             }
           }
         }
-        stages.push({replaceCount:depth,count:done,kept:gatePassed,pruned,met,best:stageBest,complete:true});
+        st.complete=true;
       }
 
       targetHits=dedupe(targetHits);
-      targetGateSurvivors=dedupe(targetGateSurvivors);
       let reached=targetHits.length>0;
-      let top=reached?targetHits.slice(0,10):targetGateSurvivors.slice(0,10);
+      let top=reached?targetHits.slice(0,10):[];
       let fallbackRefined=0;
 
-      // 목표 도달 조합이 없을 때는 목표 Gate에서 탈락했던 후보도 upperBound 순으로 재검산해
-      // 25개 후보풀 전체에서의 실제 최고 TOP10을 정확히 확정합니다.
       if(!reached){
-        fallback.sort((a,b)=>b.upperBound-a.upperBound||a.replaceCount-b.replaceCount||key(a.nums).localeCompare(key(b.nums),undefined,{numeric:true}));
-        onProgress(`목표 ${target}점 이상 조합 없음 · 실제 최고점 TOP10을 확정하는 중...`);
-        for(let i=0;i<fallback.length;i++){
-          const f=fallback[i];
-          const threshold=top.length>=10?(Number(top[9]?.after)||0):-1;
-          if(top.length>=10 && f.upperBound < threshold-0.51)break;
-          const virtual=evaluateVirtualFull(base,f.nums,cache);
-          fallbackRefined++;
-          if(virtual){
-            const real=evaluateReal(base,f.nums,cache);
-            const item=decorate(base,f.nums,real,virtual,f.replaceCount,{upperBound:f.upperBound,fallbackRefined:true});
-            item.targetMet=item.after>=target;
-            top=updateTop(top,item,10);
-            const st=stages.find(x=>x.replaceCount===f.replaceCount);
-            if(st&&(!st.best||compare(item,st.best)<0))st.best=item;
+        // 2차: 목표 95에는 못 미친 후보도 "실제 최고 TOP10"을 정확히 찾기 위해
+        // Pattern 없이 Classic/Frequency 상한만 전체 후보에 계산합니다.
+        const missingBounds=records.filter(r=>!r.bound);
+        onProgress(`목표 ${target}점 이상 조합 없음 · 최고점 TOP10용 상한 계산 ${missingBounds.length.toLocaleString()}개`);
+        let bd=0;
+        for(const rec of missingBounds){
+          rec.bound=withVirtualDrawLite(rec.nums,()=>sf.evaluateCandidateBound(base,rec.nums));
+          exactBoundCount++;bd++;
+          if(bd%yieldEvery===0){
+            onProgress(`최고점 상한 계산 ${bd.toLocaleString()}/${missingBounds.length.toLocaleString()} · Pattern 계산 없음`);
+            await sleep();
           }
-          if(fallbackRefined%60===0){onProgress(`최고점 재검산 ${fallbackRefined.toLocaleString()}개 · 현재 최고 ${top[0]?.after??'-'}점`);await sleep();}
+        }
+
+        const ordered=records.filter(r=>r.bound).sort((a,b)=>
+          Number(b.bound.upperBound)-Number(a.bound.upperBound)
+          || a.replaceCount-b.replaceCount
+          || key(a.nums).localeCompare(key(b.nums),undefined,{numeric:true})
+        );
+
+        onProgress(`정확한 최고점 TOP10 확정 · Pattern은 상위 가능 후보에만 계산합니다.`);
+        for(let i=0;i<ordered.length;i++){
+          const rec=ordered[i],bound=rec.bound;
+          const threshold=top.length>=10?(Number(top[9]?.after)||0):-1;
+          if(top.length>=10 && Number(bound.upperBound)<threshold-0.5)break;
+
+          let virtual=rec.virtual;
+          if(!virtual){
+            virtual=withVirtualDraw(rec.nums,()=>sf.completeCandidateFromBound(bound));
+            rec.virtual=virtual;patternEvaluated++;fallbackRefined++;
+          }
+          if(!virtual)continue;
+          const real=evaluateReal(base,rec.nums,cache);
+          const item=decorate(base,rec.nums,real,virtual,rec.replaceCount,{upperBound:bound.upperBound,fallbackRefined:true});
+          item.targetMet=item.after>=target;
+          top=updateTop(top,item,10);
+          const st=stageMap.get(rec.replaceCount);
+          if(st&&(!st.best||compare(item,st.best)<0))st.best=item;
+
+          if(fallbackRefined>0&&fallbackRefined%40===0){
+            onProgress(`최고점 Pattern 정밀계산 ${fallbackRefined.toLocaleString()}개 · 현재 최고 ${top[0]?.after??'-'}점`);
+            await sleep();
+          }
         }
       }
 
@@ -337,17 +400,28 @@
       const endedAt=(global.performance&&typeof global.performance.now==='function')?global.performance.now():Date.now();
       const elapsedMs=Math.max(0,endedAt-startedAt),elapsedSec=elapsedMs/1000;
       const result={
-        mode:'precise',exact:true,base,target,maxReplace,pool25:pool,poolSize:pool.length,
+        mode:'precise',exact:true,engineVersion:'fast-v3',base,target,maxReplace,pool25:pool,poolSize:pool.length,
         baseline,sameVirtual,best,top,stages,reached,targetMatchCount:targetHits.length,
         reachedReplace:reached?(targetHits[0]?.replaceCount||null):null,
-        totals:{evaluated:totalDone,kept:targetGatePassed,pruned:targetPruned,fallbackRefined,totalExpected},
-        performance:{elapsedMs:Math.round(elapsedMs),elapsedSec:Number(elapsedSec.toFixed(2)),perSecond:elapsedSec>0?Math.round(totalDone/elapsedSec):0,yieldEvery},
+        totals:{
+          evaluated:totalDone,kept:targetGatePassed,pruned:targetPruned,
+          fallbackRefined,totalExpected,exactBounds:exactBoundCount,patternEvaluated
+        },
+        performance:{
+          elapsedMs:Math.round(elapsedMs),elapsedSec:Number(elapsedSec.toFixed(2)),
+          perSecond:elapsedSec>0?Math.round(totalDone/elapsedSec):0,yieldEvery
+        },
         virtualRound:nextRound(),
-        note:`25개 후보풀 안에서 1~${maxReplace}개 교체 조합 ${totalDone.toLocaleString()}개를 빠짐없이 검사했습니다. 고속화 v2는 반복 데이터 스캔과 화면 갱신 횟수만 줄이며, 목표 Gate·Pattern·Fusion 계산식과 완전탐색 범위는 변경하지 않습니다. 목표 ${target}점 가능성은 Pattern 최대 기여까지 포함한 안전한 상한값으로 판정하고, 미도달 시 상한값 순 재검산으로 실제 최고 TOP10을 확정합니다.`
+        note:`Fast v3는 25개 후보풀의 1~${maxReplace}개 교체 조합 ${totalDone.toLocaleString()}개를 빠짐없이 검사합니다. 비교 기준 Classic TOP10/정규화 축은 한 번의 정밀 역산 동안 고정하고, 각 후보의 가상 +1회 Classic·동반빈도·Pattern 효과는 다시 계산합니다. 목표점수 판정과 최고 TOP10은 안전한 상한값(branch-and-bound)으로 후보를 제외하므로 완전탐색 범위를 줄이지 않습니다. Fusion 가중치와 Pattern 계산식은 변경하지 않습니다.`
       };
       state.last=result;return result;
-    }catch(e){console.error('ReverseInferenceEngine precise',e);return {error:e.message||String(e)};}
-    finally{state.running=false;invalidate();}
+    }catch(e){
+      console.error('ReverseInferenceEngine precise',e);
+      return {error:e.message||String(e)};
+    }finally{
+      if(sessionStarted)try{sf.endPreciseSession?.();}catch(e){}
+      state.running=false;invalidate();
+    }
   }
 
   async function run(opts={}){

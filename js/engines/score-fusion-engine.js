@@ -44,13 +44,24 @@
     return out;
   }
 
-  // Reverse precise speed v2: 과거 회차의 쌍출현 행렬을 재사용합니다.
+  // Reverse precise speed v3: 과거 회차의 쌍출현 행렬을 재사용합니다.
   // 가상 +1회는 행렬을 다시 만들지 않고 해당 후보의 15개 쌍에만 +1 효과를 적용합니다.
   const __pairMatrixCache=new Map();
-  function __frequencyContext(scope=currentRange()){
+  let __sortedRealCache={source:null,realLength:-1,first:null,last:null,rows:null};
+  function __realRowsSorted(){
     const raw=global.LOTTO_DATA||global.lottoData||[];
-    const virtual=(raw||[]).find(r=>r&&r.__reverseVirtual)||null;
+    const virtual=(raw[0]&&raw[0].__reverseVirtual)?raw[0]:null;
+    const realLength=Math.max(0,raw.length-(virtual?1:0));
+    const first=virtual?raw[1]:raw[0],last=raw[raw.length-1];
+    if(__sortedRealCache.source===raw&&__sortedRealCache.realLength===realLength&&__sortedRealCache.first===first&&__sortedRealCache.last===last&&__sortedRealCache.rows){
+      return {raw,virtual,real:__sortedRealCache.rows};
+    }
     const real=(raw||[]).filter(r=>!(r&&r.__reverseVirtual)).slice().sort((a,b)=>Number(b.round)-Number(a.round));
+    __sortedRealCache={source:raw,realLength,first,last,rows:real};
+    return {raw,virtual,real};
+  }
+  function __frequencyContext(scope=currentRange()){
+    const {virtual,real}=__realRowsSorted();
     const bonus=includeBonus();
     const wanted=scope==='all'?real.length:Math.max(0,(Number(scope)||50)-(virtual?1:0));
     const limit=Math.min(real.length,wanted);
@@ -84,6 +95,60 @@
       return {n,score:value,links};
     }).sort((a,b)=>b.score-a.score||a.n-b.n);
     return {score,averageRate:Number((rawAvg*100).toFixed(2)),top,numberContributions,sourceCount:ctx.sourceCount};
+  }
+
+  // Reverse precise Fast v3:
+  // 가상 회차를 lottoData에 실제 삽입하지 않고도 후보 조합 자체가 +1회 출현했을 때의
+  // 동반빈도 점수를 정확히 계산합니다. Pattern/Classic은 호출하지 않습니다.
+  function virtualSelfFrequencyScore(nums,scope=currentRange()){
+    const target=clean(nums);
+    if(target.length!==6)return {score:0,averageRate:0,sourceCount:0};
+    const {real}=__realRowsSorted();
+    const bonus=includeBonus();
+    const wanted=scope==='all'?real.length:Math.max(0,(Number(scope)||50)-1);
+    const limit=Math.min(real.length,wanted);
+    const first=real[0]?.round||0,last=real[real.length-1]?.round||0;
+    const ck=`${real.length}|${first}|${last}|${scope}|${bonus?'B':'N'}|${limit}`;
+    let matrix=__pairMatrixCache.get(ck);
+    if(!matrix){
+      matrix=Array.from({length:46},()=>new Uint16Array(46));
+      for(let r=0;r<limit;r++){
+        const p=rowPool(real[r],bonus);
+        for(let i=0;i<p.length;i++)for(let j=i+1;j<p.length;j++){
+          const a=p[i],b=p[j];matrix[a][b]++;matrix[b][a]++;
+        }
+      }
+      __pairMatrixCache.set(ck,matrix);
+    }
+    const pairs=combinationPairs(target);
+    const sourceCount=Math.max(1,limit+1);
+    let sumRates=0;
+    for(const [a,b] of pairs)sumRates+=(Number(matrix[a]?.[b]||0)+1)/sourceCount;
+    const rawAvg=pairs.length?sumRates/pairs.length:0;
+    const score=clamp(Math.log1p(rawAvg*100)/Math.log1p(8)*100);
+    return {score,averageRate:Number((rawAvg*100).toFixed(2)),sourceCount};
+  }
+
+  // 현재 앱의 기존 AI 추천 trust는 최대 98점입니다.
+  // 일반 비랭크 후보 정규화 상한(96)보다 넉넉한 98을 사용해 안전한 상한을 만듭니다.
+  const FAST_CLASSIC_MAX=98;
+
+  function estimateVirtualUpperBoundFast(baseNums,nums){
+    const base=clean(baseNums),target=clean(nums);
+    if(base.length!==6||target.length!==6)return null;
+    const frequency=virtualSelfFrequencyScore(target);
+    const preservation=preservationScore(base,target);
+    const known=__preciseSession&&__preciseSession.baseKey===key(base)?__preciseSession.known.get(key(target)):null;
+    const classicMax=Number.isFinite(known)&&known>0?known:96;
+    const classicContribution=Number((classicMax*WEIGHTS.classic/100).toFixed(1));
+    const frequencyContribution=Number((frequency.score*WEIGHTS.frequency/100).toFixed(1));
+    const preservationContribution=Number((preservation*WEIGHTS.preservation/100).toFixed(1));
+    const maxPatternContribution=WEIGHTS.pattern;
+    const upperBound=Number((classicContribution+frequencyContribution+preservationContribution+maxPatternContribution).toFixed(1));
+    return {
+      nums:target,frequency,preservation,upperBound,
+      contributions:{classicMax:classicContribution,patternMax:maxPatternContribution,frequency:frequencyContribution,preservation:preservationContribution}
+    };
   }
   function patternMetrics(nums){
     const eng=global.CompanionCombinationEngine;
@@ -164,54 +229,104 @@
     return reasons.slice(0,5);
   }
 
+  // Reverse precise Fast v3 session.
+  // 정밀 역산 1회 동안 비교 기준 TOP10과 Classic 정규화 기준을 고정합니다.
+  // 매 후보마다 makeRankedCombos 전체를 다시 생성하던 병목을 제거하면서,
+  // 후보 자체의 가상 +1회 효과는 그대로 다시 계산합니다.
+  let __preciseSession=null;
+  function beginPreciseSession(baseNums){
+    const base=clean(baseNums);
+    if(base.length!==6)return null;
+    const candidates=existingCandidates();
+    let data=null,allFreq=null;
+    try{data=typeof global.companionAnalysis==='function'?global.companionAnalysis():null;}catch(e){}
+    try{allFreq=typeof global.frequencyMap==='function'?global.frequencyMap(global.LOTTO_DATA||global.lottoData||[]):null;}catch(e){}
+    const refs=[{nums:base,source:'current'},...candidates.map(x=>({nums:x.nums,source:'rank',rank:x.rank,known:x.trust}))];
+    const rawRefs=refs.map(x=>({...x,parts:rawClassic(x.nums,data,allFreq)}));
+    const raws=rawRefs.map(x=>Number(x.parts?.total)||0);
+    const known=new Map(candidates.map(x=>[key(x.nums),clamp(x.trust)]));
+    __preciseSession={
+      baseKey:key(base),candidates:rawRefs,
+      minRaw:raws.length?Math.min(...raws):0,
+      maxRaw:raws.length?Math.max(...raws):0,
+      known
+    };
+    return {baseKey:__preciseSession.baseKey,referenceCount:rawRefs.length,minRaw:__preciseSession.minRaw,maxRaw:__preciseSession.maxRaw};
+  }
+  function endPreciseSession(){__preciseSession=null;}
+
   // v1.2 Reverse Inference Fast support
   // 최종 Fusion 계산식은 그대로 유지합니다.
   // Fast Gate는 Pattern을 계산하기 전에 Classic/Frequency/Preservation을 정확히 계산하고,
   // 남은 Pattern이 이론상 100점을 받더라도 cutoff에 못 미치는 후보만 조기 제외합니다.
   function candidateClassicItem(base,target){
+    const targetKey=key(target);
+    if(__preciseSession&&__preciseSession.baseKey===key(base)){
+      let data=null,allFreq=null;
+      try{data=typeof global.companionAnalysis==='function'?global.companionAnalysis():null;}catch(e){}
+      try{allFreq=typeof global.frequencyMap==='function'?global.frequencyMap(global.LOTTO_DATA||global.lottoData||[]):null;}catch(e){}
+      const parts=rawClassic(target,data,allFreq);
+      const raw=Number(parts?.total)||0;
+      const known=__preciseSession.known.get(targetKey);
+      let classic;
+      if(Number.isFinite(known)&&known>0)classic=clamp(known);
+      else{
+        const min=Math.min(__preciseSession.minRaw,raw);
+        const max=Math.max(__preciseSession.maxRaw,raw);
+        classic=clamp(max>min?55+(raw-min)/(max-min)*41:75);
+      }
+      return {nums:clean(target),source:'precise',rank:0,known:known||0,parts,classic};
+    }
+
     const candidates=existingCandidates();
-    const extraKey=key(target);
-    if(!candidates.some(x=>key(x.nums)===extraKey))candidates.push({nums:target,rank:0,trust:0,parts:{},replace:base.filter(n=>!target.includes(n)).length});
+    if(!candidates.some(x=>key(x.nums)===targetKey))candidates.push({nums:target,rank:0,trust:0,parts:{},replace:base.filter(n=>!target.includes(n)).length});
     const classic=classicDataset(base,candidates);
-    return classic.find(x=>key(x.nums)===extraKey) || classic[0] || null;
+    return classic.find(x=>key(x.nums)===targetKey) || classic[0] || null;
   }
 
-  function evaluateCandidateGate(baseNums,nums,cutoff=80){
+  function evaluateCandidateBound(baseNums,nums){
     const base=clean(baseNums),target=clean(nums);
     if(base.length!==6||target.length!==6)return null;
     const item=candidateClassicItem(base,target);
     if(!item)return null;
-
     const frequency=frequencyMetrics(target);
     const preservation=preservationScore(base,target);
     const classicContribution=Number((item.classic*WEIGHTS.classic/100).toFixed(1));
     const frequencyContribution=Number((frequency.score*WEIGHTS.frequency/100).toFixed(1));
     const preservationContribution=Number((preservation*WEIGHTS.preservation/100).toFixed(1));
-    const maxPatternContribution=WEIGHTS.pattern; // Pattern 100점의 최대 기여 = 20점
+    const maxPatternContribution=WEIGHTS.pattern;
     const upperBound=Number((classicContribution+frequencyContribution+preservationContribution+maxPatternContribution).toFixed(1));
     const kept=target.filter(n=>base.includes(n));
     const added=target.filter(n=>!base.includes(n));
     const removed=base.filter(n=>!target.includes(n));
+    return {
+      ...item,nums:target,frequency,preservation,kept,added,removed,replaceCount:removed.length,
+      upperBound,
+      contributions:{classic:classicContribution,pattern:null,frequency:frequencyContribution,preservation:preservationContribution}
+    };
+  }
 
-    if(upperBound<Number(cutoff||80)){
-      return {
-        ...item,nums:target,frequency,preservation,kept,added,removed,replaceCount:removed.length,
-        pruned:true,upperBound,cutoff:Number(cutoff||80),
-        contributions:{classic:classicContribution,pattern:null,frequency:frequencyContribution,preservation:preservationContribution},
-        total:null
-      };
-    }
-
-    // Gate를 통과한 후보만 기존 Pattern을 계산하고 원래 Fusion 산식으로 최종 점수를 계산합니다.
-    const pattern=patternMetrics(target)||{strength:0,confidence:0,adjusted:0,components:{},confidenceParts:{}};
+  function completeCandidateFromBound(bound){
+    if(!bound||!Array.isArray(bound.nums)||bound.nums.length!==6)return null;
+    const pattern=patternMetrics(bound.nums)||{strength:0,confidence:0,adjusted:0,components:{},confidenceParts:{}};
     const contributions={
-      classic:classicContribution,
+      classic:Number(bound.contributions?.classic)||0,
       pattern:Number((pattern.adjusted*WEIGHTS.pattern/100).toFixed(1)),
-      frequency:frequencyContribution,
-      preservation:preservationContribution
+      frequency:Number(bound.contributions?.frequency)||0,
+      preservation:Number(bound.contributions?.preservation)||0
     };
     const total=clamp(Object.values(contributions).reduce((sum,v)=>sum+(Number(v)||0),0));
-    return {...item,nums:target,pattern,frequency,preservation,contributions,total,kept,added,removed,replaceCount:removed.length,pruned:false,upperBound,cutoff:Number(cutoff||80)};
+    return {...bound,pattern,contributions,total,pruned:false};
+  }
+
+  function evaluateCandidateGate(baseNums,nums,cutoff=80){
+    const bound=evaluateCandidateBound(baseNums,nums);
+    if(!bound)return null;
+    // 최종 total은 Math.round이므로 cutoff-0.5 미만일 때만 안전하게 제외합니다.
+    if(bound.upperBound<Number(cutoff||80)-0.5){
+      return {...bound,pruned:true,cutoff:Number(cutoff||80)};
+    }
+    return {...completeCandidateFromBound(bound),cutoff:Number(cutoff||80)};
   }
 
   function evaluateCandidate(baseNums,nums){
@@ -237,5 +352,5 @@
     };
   }
 
-  global.ScoreFusionEngine=Object.freeze({WEIGHTS,analyze,evaluateCandidate,evaluateCandidateGate,frequencyMetrics,patternMetrics,currentSelection});
+  global.ScoreFusionEngine=Object.freeze({WEIGHTS,analyze,evaluateCandidate,evaluateCandidateGate,evaluateCandidateBound,completeCandidateFromBound,beginPreciseSession,endPreciseSession,estimateVirtualUpperBoundFast,virtualSelfFrequencyScore,frequencyMetrics,patternMetrics,currentSelection});
 })(window);
