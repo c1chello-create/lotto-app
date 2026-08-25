@@ -361,6 +361,77 @@
     });
     return maps;
   }
+
+  // =========================================================
+  // Reverse precise Fast v4
+  // 가상 +1회 Pattern 계산을 위해 과거 맵을 1회만 만들고,
+  // 후보마다 실제 lottoData 삽입/삭제 및 전체 맵 재생성을 하지 않습니다.
+  // 기존 scorePatternComboV3 계산식은 그대로 사용합니다.
+  // =========================================================
+  const virtualPatternContextCache=new Map();
+
+  function prepareVirtualPatternContext(opts={}){
+    const scope=opts.scope||state.scope;
+    const includeBonus=opts.includeBonus??state.includeBonus;
+    const all=rows().filter(r=>!(r&&r.__reverseVirtual));
+    const virtualRound=(all.reduce((m,r)=>Math.max(m,Number(r.round)||0),0)||0)+1;
+    const realLimit=scope==='all'?all.length:Math.max(0,(Number(scope)||50)-1);
+    const scopedReal=all.slice(0,Math.min(all.length,realLimit));
+    const recentReal=scopedReal.slice(0,Math.min(49,scopedReal.length));
+    const first=all[0]?.round||0,last=all[all.length-1]?.round||0;
+    const cacheKey=`${all.length}|${first}|${last}|${scope}|${includeBonus?'B':'N'}|${realLimit}`;
+    let ctx=virtualPatternContextCache.get(cacheKey);
+    if(ctx)return ctx;
+
+    const base=buildMapsFromRows(scopedReal,includeBonus);
+    // 기존 recentFullConsistency()는 includeBonus 옵션과 무관하게 pool(row,true)를 사용합니다.
+    // 따라서 최근 50회 비교용 맵은 보너스 포함으로 별도 사전계산합니다.
+    const recentTrue=buildMapsFromRows(recentReal,true);
+    ctx={
+      scope,includeBonus,virtualRound,
+      base,recentTrue,
+      fullLength:scopedReal.length+1,
+      recentLength:Math.min(50,scopedReal.length+1),
+      oldest:scopedReal.length?(Number(scopedReal[scopedReal.length-1].round)||virtualRound):virtualRound
+    };
+    virtualPatternContextCache.set(cacheKey,ctx);
+    return ctx;
+  }
+
+  function phase3Item(maps,size,part){
+    const nums=cleanNums(part);
+    const item=maps[size].get(keyOf(nums));
+    const vset=maps.__virtualSet;
+    if(vset&&nums.length&&nums.every(n=>vset.has(n))){
+      return {
+        nums,
+        count:(item?.count||0)+1,
+        recentRound:maps.__virtualRound,
+        rounds:item?.rounds||[],
+        __virtualAdded:true
+      };
+    }
+    return item||null;
+  }
+
+  function phase3Rounds(item,maps){
+    if(!item)return[];
+    if(item.__virtualAdded)return [maps.__virtualRound,...(item.rounds||[])];
+    return item.rounds||[];
+  }
+
+  function virtualMaps(nums,ctx){
+    const clean=cleanNums(nums);
+    return {
+      2:ctx.base[2],3:ctx.base[3],4:ctx.base[4],
+      rows:{length:ctx.fullLength},
+      newest:ctx.virtualRound,oldest:ctx.oldest,
+      __virtualContext:ctx,
+      __virtualSet:new Set(clean),
+      __virtualRound:ctx.virtualRound
+    };
+  }
+
   function occurrenceScore(count,size){
     const scales={2:18,3:7,4:3};
     const scale=scales[size]||7;
@@ -381,12 +452,12 @@
   }
   function subsetRows(nums,size,maps){
     return choose(cleanNums(nums),size).map(part=>{
-      const item=maps[size].get(keyOf(part));
+      const item=phase3Item(maps,size,part);
       return {
         nums:part,
         count:item?.count||0,
         recentRound:item?.recentRound||0,
-        rounds:item?.rounds||[],
+        rounds:phase3Rounds(item,maps),
         occurrence:occurrenceScore(item?.count||0,size),
         recent:itemRecentScore(item,maps)
       };
@@ -394,12 +465,31 @@
   }
   function lowerSupportForSubset(subset,maps){
     const size=subset.length;
-    if(size<=2)return occurrenceScore(maps[2].get(keyOf(subset))?.count||0,2);
+    if(size<=2)return occurrenceScore(phase3Item(maps,2,subset)?.count||0,2);
     const pairScores=subsetRows(subset,2,maps).map(x=>x.occurrence);
     const tripleScores=size>=4?subsetRows(subset,3,maps).map(x=>x.occurrence):[];
     return clamp100(avgOf(pairScores)*.45+avgOf(tripleScores)*.55);
   }
   function recentFullConsistency(nums,maps){
+    // Fast v4 가상 맵: 기존 반복문과 동일한 값을 사전계산 맵 조회로 구합니다.
+    if(maps.__virtualContext){
+      const ctx=maps.__virtualContext;
+      const fullLen=Math.max(1,ctx.fullLength);
+      const recentLen=Math.max(1,ctx.recentLength);
+      const diffs=[];
+      [2,3,4].forEach(size=>{
+        choose(cleanNums(nums),size).forEach(part=>{
+          const k=keyOf(part);
+          const virtualHit=part.every(n=>maps.__virtualSet.has(n))?1:0;
+          const full=((ctx.base[size].get(k)?.count||0)+virtualHit)/fullLen;
+          const recent=((ctx.recentTrue[size].get(k)?.count||0)+virtualHit)/recentLen;
+          const denom=Math.max(full,recent,1/fullLen);
+          diffs.push(Math.min(1,Math.abs(recent-full)/denom));
+        });
+      });
+      return clamp100((1-avgOf(diffs))*100);
+    }
+
     const fullRows=maps.rows;
     if(!fullRows.length)return 0;
     const recentRows=fullRows.slice(0,Math.min(50,fullRows.length));
@@ -408,7 +498,7 @@
     sizes.forEach(size=>{
       const parts=choose(cleanNums(nums),size);
       parts.forEach(part=>{
-        const full=(maps[size].get(keyOf(part))?.count||0)/Math.max(1,fullRows.length);
+        const full=(phase3Item(maps,size,part)?.count||0)/Math.max(1,fullRows.length);
         let rc=0;
         recentRows.forEach(row=>{
           const p=pool(row,true);
@@ -421,6 +511,7 @@
     });
     return clamp100((1-avgOf(diffs))*100);
   }
+
   function groupCohesion(nums,maps){
     const pairs=subsetRows(nums,2,maps);
     const coverage=pairs.filter(x=>x.count>0).length/Math.max(1,pairs.length);
@@ -436,12 +527,12 @@
     const balance=mean?Math.max(0,1-Math.sqrt(variance)/mean):0;
     return clamp100((coverage*.35+strength*.45+balance*.20)*100);
   }
-  function flowStrength(nums,maps){
+  function flowStrength(nums,maps,knownConsistency=null){
     const all=[...subsetRows(nums,2,maps),...subsetRows(nums,3,maps),...subsetRows(nums,4,maps)];
     const active=all.filter(x=>x.count>0);
     if(!active.length)return 0;
     const recent=avgOf(active.map(x=>x.recent));
-    const consistency=recentFullConsistency(nums,maps);
+    const consistency=knownConsistency==null?recentFullConsistency(nums,maps):knownConsistency;
     return clamp100(recent*.62+consistency*.38);
   }
   function repeatSupportedMetrics(nums,maps){
@@ -467,7 +558,8 @@
     );
 
     const group=groupCohesion(nums,maps);
-    const flow=flowStrength(nums,maps);
+    const consistency=recentFullConsistency(nums,maps);
+    const flow=flowStrength(nums,maps,consistency);
 
     const sample=clamp100(
       Math.min(1,avgOf(pairs.map(x=>x.count))/5)*25+
@@ -485,7 +577,6 @@
       ...quads.flatMap(x=>x.rounds)
     ];
     const timeSpread=timeSpreadScore(allRounds,maps);
-    const consistency=recentFullConsistency(nums,maps);
 
     const strength=clamp100(
       structural*.35+
@@ -545,6 +636,26 @@
       pair:m.pair,triple:m.triple,quad:m.quad,recent:m.recent
     };
   }
+  function scorePatternComboV3Virtual(nums,context){
+    const clean=cleanNums(nums);
+    if(clean.length!==6)return null;
+    const ctx=context||prepareVirtualPatternContext({});
+    if(!ctx)return null;
+    const maps=virtualMaps(clean,ctx);
+    const m=repeatSupportedMetrics(clean,maps);
+    return {
+      nums:clean,
+      score:m.adjusted,
+      strength:m.strength,
+      confidence:m.confidence,
+      adjusted:m.adjusted,
+      grade:gradeForScore(m.adjusted),
+      components:m.components,
+      confidenceParts:m.confidenceParts,
+      pair:m.pair,triple:m.triple,quad:m.quad,recent:m.recent
+    };
+  }
+
   function compareOptimizedV3(a,b){
     return (b.aiLinked||0)-(a.aiLinked||0)
       || b.pattern.adjusted-a.pattern.adjusted
@@ -684,7 +795,7 @@
     state,defaults,aggregate,details,scopedRows,pool,choose,keyOf,
     bestWithCandidate,recommendationPatterns,strength,selectedNumsFromInput,requiredSelectedCount,indexForPattern,patternSetIndex,aiUsageForPattern,gradeForScore,
     scorePatternCombo:scorePatternComboV3,optimizePattern:optimizePatternV3,explainPatternRecommendation,
-    phase3Weights,scorePatternComboV3,optimizePatternV3,backtestPhase3,
-    clearOptimizerCache:()=>optimizerCache.clear()
+    phase3Weights,scorePatternComboV3,scorePatternComboV3Virtual,prepareVirtualPatternContext,optimizePatternV3,backtestPhase3,
+    clearOptimizerCache:()=>{optimizerCache.clear();virtualPatternContextCache.clear();}
   });
 })(window);

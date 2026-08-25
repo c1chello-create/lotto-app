@@ -255,7 +255,7 @@
     if(base.length!==6)return {error:'정밀 역산은 번호 6개가 필요합니다.'};
     const sf=global.ScoreFusionEngine;
     if(!sf?.evaluateCandidateBound||!sf?.completeCandidateFromBound||!sf?.estimateVirtualUpperBoundFast){
-      return {error:'Fast v3용 ScoreFusionEngine 연결이 필요합니다.'};
+      return {error:'Fast v4용 ScoreFusionEngine 연결이 필요합니다.'};
     }
     const pool=clean(opts.pool||candidatePool25());
     if(pool.length!==25)return {error:'🎯 목표점수 정밀 역산은 25개 후보풀을 먼저 확정해야 합니다.'};
@@ -267,14 +267,20 @@
     const cache=createRunCache(base,target);
     const addPool=pool.filter(n=>!base.includes(n));
     const startedAt=(global.performance&&typeof global.performance.now==='function')?global.performance.now():Date.now();
-    const yieldEvery=Math.max(300,Math.min(1200,Number(opts.yieldEvery)||600));
+    const yieldEvery=Math.max(600,Math.min(4000,Number(opts.yieldEvery)||1200));
     state.running=true;
     let sessionStarted=false;
     try{
-      onProgress(`25개 후보풀 정밀 역산 준비 · 목표 ${target}점 · Fast v3`);
+      onProgress(`25개 후보풀 정밀 역산 준비 · 목표 ${target}점 · Fast v4`);
       // 사용자가 보던 현재점수/현재조합+1회 값은 기존 방식으로 1회만 계산합니다.
       const baseline=evaluateReal(base,base,cache);
       const sameVirtual=evaluateVirtualFull(base,base,cache);
+      if(!baseline||!Number.isFinite(Number(baseline.total))){
+        throw new Error('현재 Fusion 실제점수 계산에 실패했습니다. 정밀 역산을 중단합니다.');
+      }
+      if(!sameVirtual||!Number.isFinite(Number(sameVirtual.total))){
+        throw new Error('현재 조합 +1회 점수 계산에 실패했습니다. 정밀 역산을 중단합니다.');
+      }
 
       sf.beginPreciseSession?.(base);
       sessionStarted=true;
@@ -301,7 +307,7 @@
         const additions=combinations(addPool,depth);
         const stageTotal=removals.length*additions.length;
         const st=stageMap.get(depth);
-        onProgress(`${depth}개 교체 Fast v3 탐색 시작 · ${stageTotal.toLocaleString()}개`);
+        onProgress(`${depth}개 교체 Fast v4 탐색 시작 · ${stageTotal.toLocaleString()}개`);
         for(const removed of removals){
           const kept=base.filter(n=>!removed.includes(n));
           for(const added of additions){
@@ -321,14 +327,15 @@
                 st.pruned++;targetPruned++;
               }else{
                 st.kept++;targetGatePassed++;
-                const virtual=withVirtualDraw(nums,()=>sf.completeCandidateFromBound(bound));
+                const virtual=sf.completeCandidateFromBound(bound);
                 rec.virtual=virtual;patternEvaluated++;
-                if(virtual){
+                if(virtual&&Number(virtual.total)>=target){
                   const real=evaluateReal(base,nums,cache);
+                  if(!real||!Number.isFinite(Number(real.total)))throw new Error(`실제점수 계산 실패: ${nums.join('·')}`);
                   const item=decorate(base,nums,real,virtual,depth,{upperBound:bound.upperBound});
-                  item.targetMet=item.after>=target;
+                  item.targetMet=true;
                   if(!st.best||compare(item,st.best)<0)st.best=item;
-                  if(item.targetMet){st.met++;targetHits.push(item);}
+                  st.met++;targetHits.push(item);
                 }
               }
             }
@@ -378,11 +385,15 @@
 
           let virtual=rec.virtual;
           if(!virtual){
-            virtual=withVirtualDraw(rec.nums,()=>sf.completeCandidateFromBound(bound));
+            virtual=sf.completeCandidateFromBound(bound);
             rec.virtual=virtual;patternEvaluated++;fallbackRefined++;
           }
           if(!virtual)continue;
+          const exactThreshold=top.length>=10?(Number(top[9]?.after)||0):-1;
+          // 가상점수가 현재 TOP10 최저점보다 낮으면 실제점수/상승폭 tie-break 계산 없이도 탈락이 확정됩니다.
+          if(top.length>=10&&Number(virtual.total)<exactThreshold)continue;
           const real=evaluateReal(base,rec.nums,cache);
+          if(!real||!Number.isFinite(Number(real.total)))throw new Error(`실제점수 계산 실패: ${rec.nums.join('·')}`);
           const item=decorate(base,rec.nums,real,virtual,rec.replaceCount,{upperBound:bound.upperBound,fallbackRefined:true});
           item.targetMet=item.after>=target;
           top=updateTop(top,item,10);
@@ -400,7 +411,7 @@
       const endedAt=(global.performance&&typeof global.performance.now==='function')?global.performance.now():Date.now();
       const elapsedMs=Math.max(0,endedAt-startedAt),elapsedSec=elapsedMs/1000;
       const result={
-        mode:'precise',exact:true,engineVersion:'fast-v3',base,target,maxReplace,pool25:pool,poolSize:pool.length,
+        mode:'precise',exact:true,engineVersion:'fast-v4',base,target,maxReplace,pool25:pool,poolSize:pool.length,
         baseline,sameVirtual,best,top,stages,reached,targetMatchCount:targetHits.length,
         reachedReplace:reached?(targetHits[0]?.replaceCount||null):null,
         totals:{
@@ -412,7 +423,7 @@
           perSecond:elapsedSec>0?Math.round(totalDone/elapsedSec):0,yieldEvery
         },
         virtualRound:nextRound(),
-        note:`Fast v3는 25개 후보풀의 1~${maxReplace}개 교체 조합 ${totalDone.toLocaleString()}개를 빠짐없이 검사합니다. 비교 기준 Classic TOP10/정규화 축은 한 번의 정밀 역산 동안 고정하고, 각 후보의 가상 +1회 Classic·동반빈도·Pattern 효과는 다시 계산합니다. 목표점수 판정과 최고 TOP10은 안전한 상한값(branch-and-bound)으로 후보를 제외하므로 완전탐색 범위를 줄이지 않습니다. Fusion 가중치와 Pattern 계산식은 변경하지 않습니다.`
+        note:`Fast v4는 25개 후보풀의 1~${maxReplace}개 교체 조합 ${totalDone.toLocaleString()}개를 빠짐없이 검사합니다. 비교 기준 Classic TOP10/정규화 축은 한 번의 정밀 역산 동안 고정하고, 각 후보의 가상 +1회 Classic·동반빈도·Pattern 효과는 다시 계산합니다. Pattern 과거 맵은 1회만 준비하고 후보별 +1 효과만 정확히 증분 적용합니다. 목표점수 판정과 최고 TOP10은 안전한 상한값(branch-and-bound)으로 후보를 제외하므로 완전탐색 범위를 줄이지 않습니다. Fusion 가중치와 Pattern 계산식은 변경하지 않습니다.`
       };
       state.last=result;return result;
     }catch(e){

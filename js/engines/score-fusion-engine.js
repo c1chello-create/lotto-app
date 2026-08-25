@@ -166,6 +166,22 @@
       };
     }catch(e){return null;}
   }
+  function patternMetricsVirtual(nums){
+    const eng=global.CompanionCombinationEngine;
+    const ctx=__preciseSession?.patternContext;
+    if(!eng||!ctx||typeof eng.scorePatternComboV3Virtual!=='function')return patternMetrics(nums);
+    try{
+      const p=eng.scorePatternComboV3Virtual(clean(nums),ctx);
+      if(!p)return null;
+      return {
+        strength:Number(p.strength??p.score??0),
+        confidence:Number(p.confidence??0),
+        adjusted:Number(p.adjusted??p.score??0),
+        components:p.components||{},confidenceParts:p.confidenceParts||{},raw:p
+      };
+    }catch(e){return null;}
+  }
+
   function existingCandidates(){
     try{
       if(typeof global.companionAnalysis==='function'&&typeof global.makeRankedCombos==='function'){
@@ -245,11 +261,18 @@
     const rawRefs=refs.map(x=>({...x,parts:rawClassic(x.nums,data,allFreq)}));
     const raws=rawRefs.map(x=>Number(x.parts?.total)||0);
     const known=new Map(candidates.map(x=>[key(x.nums),clamp(x.trust)]));
+    let patternContext=null;
+    try{
+      const eng=global.CompanionCombinationEngine;
+      if(typeof eng?.prepareVirtualPatternContext==='function'){
+        patternContext=eng.prepareVirtualPatternContext({scope:currentRange(),includeBonus:includeBonus()});
+      }
+    }catch(e){}
     __preciseSession={
       baseKey:key(base),candidates:rawRefs,
       minRaw:raws.length?Math.min(...raws):0,
       maxRaw:raws.length?Math.max(...raws):0,
-      known
+      known,patternContext
     };
     return {baseKey:__preciseSession.baseKey,referenceCount:rawRefs.length,minRaw:__preciseSession.minRaw,maxRaw:__preciseSession.maxRaw};
   }
@@ -299,16 +322,18 @@
     const kept=target.filter(n=>base.includes(n));
     const added=target.filter(n=>!base.includes(n));
     const removed=base.filter(n=>!target.includes(n));
+    const source=global.LOTTO_DATA||global.lottoData||[];
+    const virtualCandidate=!!(source[0]&&source[0].__reverseVirtual);
     return {
       ...item,nums:target,frequency,preservation,kept,added,removed,replaceCount:removed.length,
-      upperBound,
+      upperBound,__virtualCandidate:virtualCandidate,
       contributions:{classic:classicContribution,pattern:null,frequency:frequencyContribution,preservation:preservationContribution}
     };
   }
 
   function completeCandidateFromBound(bound){
     if(!bound||!Array.isArray(bound.nums)||bound.nums.length!==6)return null;
-    const pattern=patternMetrics(bound.nums)||{strength:0,confidence:0,adjusted:0,components:{},confidenceParts:{}};
+    const pattern=(bound.__virtualCandidate&&__preciseSession?.patternContext?patternMetricsVirtual(bound.nums):patternMetrics(bound.nums))||{strength:0,confidence:0,adjusted:0,components:{},confidenceParts:{}};
     const contributions={
       classic:Number(bound.contributions?.classic)||0,
       pattern:Number((pattern.adjusted*WEIGHTS.pattern/100).toFixed(1)),
@@ -322,11 +347,14 @@
   function evaluateCandidateGate(baseNums,nums,cutoff=80){
     const bound=evaluateCandidateBound(baseNums,nums);
     if(!bound)return null;
+    const cutoffNum=Number.isFinite(Number(cutoff))?Number(cutoff):80;
     // 최종 total은 Math.round이므로 cutoff-0.5 미만일 때만 안전하게 제외합니다.
-    if(bound.upperBound<Number(cutoff||80)-0.5){
-      return {...bound,pruned:true,cutoff:Number(cutoff||80)};
+    // cutoff=0은 실제점수 전체계산을 뜻하므로 80으로 치환하지 않습니다.
+    if(bound.upperBound<cutoffNum-0.5){
+      return {...bound,pruned:true,cutoff:cutoffNum};
     }
-    return {...completeCandidateFromBound(bound),cutoff:Number(cutoff||80)};
+    const full=completeCandidateFromBound(bound);
+    return full?{...full,cutoff:cutoffNum}:null;
   }
 
   function evaluateCandidate(baseNums,nums){
