@@ -29,7 +29,7 @@ function rangeMatches(){return matchRowsFrom(sourceRows())}
 function countByThreshold(threshold){return matchRowsFrom(lottoData,threshold).length}
 function exactWinningRows(){if(selectedNums.length!==6)return[];const key=selectedNums.slice().sort((a,b)=>a-b).join(',');return lottoData.filter(row=>(row.numbers||[]).slice().sort((a,b)=>a-b).join(',')===key).sort((a,b)=>b.round-a.round)}
 function setStatusText(){const rule=matchMode==='exact'?'완전일치':'부분일치';$('status').textContent=`전체 ${lottoData.length}개 회차 데이터를 불러왔습니다. / 현재 기준: ${rule}`}
-function renderSummary(){const matches=allMatches(),range=rangeMatches(),last=matches[0],gap=last?lottoData.findIndex(x=>x.round===last.row.round)+1:'-',exact=exactWinningRows(),threshold=minHit();let extra='';if(selectedNums.length>=4){extra=`<div><b>${countByThreshold(4)}회</b><span>4개 이상</span></div><div><b>${countByThreshold(5)}회</b><span>5개 이상</span></div>`}else{extra=`<div><b>${threshold}개+</b><span>분석 기준</span></div><div><b>${includeBonus()?'포함':'제외'}</b><span>보너스</span></div>`}$('summary').innerHTML=`<div class="combo-card"><b>${selectedNums.length}개 번호 조합 분석</b><div class="combo-selected">${selectedNums.map(n=>ball(n)).join('')}</div><p class="combo-guide">${matchMode==='exact'?'선택한 번호가 모두 동시에 나온 회차만 분석합니다.':'선택한 번호 중 '+threshold+'개 이상 나온 회차를 기준으로 분석합니다.'}</p><div class="summary-metrics"><div><b>${matches.length}회</b><span>전체 출현</span></div><div><b>${range.length}회</b><span>현재 범위</span></div><div><b>${last?last.row.round+'회':'-'}</b><span>최근 출현</span></div><div><b>${gap}</b><span>미출현 기간</span></div>${extra}<div><b>${selectedNums.length===6?exact.length+'회':'해당없음'}</b><span>완전일치</span></div></div></div>`}
+function renderSummary(){const matches=allMatches(),range=rangeMatches(),last=matches[0],gap=last?lottoData.findIndex(x=>x.round===last.row.round)+1:'-',exact=exactWinningRows(),threshold=minHit();let extra='';if(selectedNums.length>=4){extra=`<button type="button" class="summary-metric-btn" onclick="openHitHistorySheet(4)" aria-label="4개 이상 적중 회차 보기"><b>${countByThreshold(4)}회</b><span>4개 이상</span><em>회차보기</em></button><div><b>${countByThreshold(5)}회</b><span>5개 이상</span></div>`}else{extra=`<div><b>${threshold}개+</b><span>분석 기준</span></div><div><b>${includeBonus()?'포함':'제외'}</b><span>보너스</span></div>`}$('summary').innerHTML=`<div class="combo-card"><b>${selectedNums.length}개 번호 조합 분석</b><div class="combo-selected">${selectedNums.map(n=>ball(n)).join('')}</div><p class="combo-guide">${matchMode==='exact'?'선택한 번호가 모두 동시에 나온 회차만 분석합니다.':'선택한 번호 중 '+threshold+'개 이상 나온 회차를 기준으로 분석합니다.'}</p><div class="summary-metrics"><div><b>${matches.length}회</b><span>전체 출현</span></div><div><b>${range.length}회</b><span>현재 범위</span></div><div><b>${last?last.row.round+'회':'-'}</b><span>최근 출현</span></div><div><b>${gap}</b><span>미출현 기간</span></div>${extra}<div><b>${selectedNums.length===6?exact.length+'회':'해당없음'}</b><span>완전일치</span></div></div></div>`}
 function companionAnalysis(){const rows=rangeMatches(),counts={};for(let i=1;i<=45;i++)counts[i]=0;rows.forEach(x=>{rowPool(x.row).forEach(n=>{if(!selectedNums.includes(n))counts[n]++})});const max=Math.max(...Object.values(counts),1);const top=Object.entries(counts).map(([n,c])=>({n:Number(n),count:c,index:Math.round((c/max)*100)})).filter(x=>x.count>0).sort((a,b)=>b.count-a.count||a.n-b.n).slice(0,15);return{rows,top,recommend:top.slice(0,3).map(x=>x.n),counts,max}}
 function frequencyMap(rows){const m={};for(let i=1;i<=45;i++)m[i]=0;rows.forEach(row=>(row.numbers||[]).forEach(n=>m[n]++));return m}
 function pairScore(a,b,rows){let c=0;rows.forEach(x=>{const p=rowPool(x.row||x);if(p.includes(a)&&p.includes(b))c++});return c}
@@ -2788,3 +2788,117 @@ renderRankedCombos=function(data){
   }
   global.Pool25DedicatedAnalysis=Object.freeze({render});
 })(window);
+
+
+/* =========================================================
+   v1.9.6 적중 회차 상세보기
+   - 4개 이상 카드 탭/클릭 지원
+   - 4개 이상 / 5개 이상 / 6개 필터
+   - 회차·추첨일·당첨번호·보너스·일치개수 표시
+   - 기존 분석/AI/Fast v4 계산 로직 변경 없음
+========================================================= */
+let hitHistoryFilter=4;
+function hitHistoryItems(filter){
+  const threshold=Number(filter)||4;
+  return lottoData
+    .map(row=>({row,hit:hitInfo(row)}))
+    .filter(x=>x.hit.total>=threshold)
+    .sort((a,b)=>b.row.round-a.row.round);
+}
+function ensureHitHistorySheet(){
+  let wrap=document.getElementById('hitHistorySheetWrap');
+  if(wrap)return wrap;
+  wrap=document.createElement('div');
+  wrap.id='hitHistorySheetWrap';
+  wrap.className='hit-sheet-wrap';
+  wrap.innerHTML=`
+    <div class="hit-sheet-backdrop" onclick="closeHitHistorySheet()"></div>
+    <section class="hit-sheet" role="dialog" aria-modal="true" aria-label="적중 회차 상세보기">
+      <div class="hit-sheet-handle"></div>
+      <div class="hit-sheet-head">
+        <div><b id="hitSheetTitle">4개 이상 적중 회차</b><p id="hitSheetSubtitle">선택 번호의 과거 적중 기록</p></div>
+        <button type="button" onclick="closeHitHistorySheet()" aria-label="닫기">✕</button>
+      </div>
+      <div class="hit-sheet-tabs" id="hitSheetTabs"></div>
+      <div class="hit-sheet-body" id="hitSheetBody"></div>
+      <div class="hit-sheet-detail" id="hitSheetDetail"></div>
+    </section>`;
+  document.body.appendChild(wrap);
+  return wrap;
+}
+function openHitHistorySheet(filter=4){
+  if(selectedNums.length<4){alert('번호를 4개 이상 입력한 뒤 확인하세요.');return;}
+  hitHistoryFilter=Number(filter)||4;
+  const wrap=ensureHitHistorySheet();
+  wrap.classList.add('open');
+  document.body.classList.add('hit-sheet-lock');
+  renderHitHistorySheet();
+}
+function closeHitHistorySheet(){
+  const wrap=document.getElementById('hitHistorySheetWrap');
+  if(wrap)wrap.classList.remove('open');
+  document.body.classList.remove('hit-sheet-lock');
+}
+function setHitHistoryFilter(filter){
+  hitHistoryFilter=Number(filter)||4;
+  renderHitHistorySheet();
+}
+function renderHitHistorySheet(){
+  const tabs=document.getElementById('hitSheetTabs');
+  const body=document.getElementById('hitSheetBody');
+  const detail=document.getElementById('hitSheetDetail');
+  if(!tabs||!body)return;
+  const defs=[[4,'4개 이상'],[5,'5개 이상'],[6,'6개']];
+  tabs.innerHTML=defs.map(([value,label])=>{
+    const count=hitHistoryItems(value).length;
+    return `<button type="button" class="${hitHistoryFilter===value?'active':''}" onclick="setHitHistoryFilter(${value})"><span>${label}</span><small>${count}회</small></button>`;
+  }).join('');
+  const items=hitHistoryItems(hitHistoryFilter);
+  body.innerHTML=items.length?items.map(x=>`
+    <button type="button" class="hit-round-row" onclick="showHitRoundDetail(${x.row.round})">
+      <span class="hit-round-meta"><b>${x.row.round}회</b><small>${x.row.date||''}</small></span>
+      <span class="hit-round-balls">${(x.row.numbers||[]).map(n=>ball(n,true,selectedNums.includes(n)?'selected-ball':'')).join('')}<i>+</i>${ball(x.row.bonus,true,selectedNums.includes(x.row.bonus)?'selected-ball':'')}</span>
+      <strong>${x.hit.total}개</strong>
+    </button>`).join(''):`<div class="hit-sheet-empty">해당 적중 회차가 없습니다.</div>`;
+  if(detail)detail.innerHTML='';
+  const title=document.getElementById('hitSheetTitle');
+  const sub=document.getElementById('hitSheetSubtitle');
+  const label=hitHistoryFilter===6?'6개':' '+hitHistoryFilter+'개 이상';
+  if(title)title.textContent=`${label.trim()} 적중 회차`;
+  if(sub)sub.textContent=`${items.length}개 회차 · 회차를 누르면 상세 비교가 표시됩니다.`;
+}
+function showHitRoundDetail(round){
+  const detail=document.getElementById('hitSheetDetail');
+  const row=lottoData.find(x=>Number(x.round)===Number(round));
+  if(!detail||!row)return;
+  const hit=hitInfo(row);
+  const winning=[...(row.numbers||[])];
+  const matched=selectedNums.filter(n=>winning.includes(n)||(includeBonus()&&n===row.bonus));
+  const missed=selectedNums.filter(n=>!matched.includes(n));
+  detail.innerHTML=`<div class="hit-detail-card">
+    <div class="hit-detail-head"><b>${row.round}회 상세 비교</b><span>${row.date||''}</span></div>
+    <div class="hit-detail-label">당첨번호</div>
+    <div class="combo-selected">${winning.map(n=>ball(n,true,selectedNums.includes(n)?'selected-ball':'')).join('')}<span class="hit-plus">+</span>${ball(row.bonus,true,selectedNums.includes(row.bonus)?'selected-ball':'')}</div>
+    <div class="hit-detail-grid"><div><b>${hit.total}개</b><span>총 일치</span></div><div><b>${hit.normal}개</b><span>일반번호</span></div><div><b>${hit.bonus?'포함':'없음'}</b><span>보너스</span></div></div>
+    <div class="hit-detail-label">일치 번호</div><div class="combo-selected">${matched.length?matched.map(n=>ball(n,true,'selected-ball')).join(''):'없음'}</div>
+    <div class="hit-detail-label">미일치 번호</div><div class="combo-selected">${missed.length?missed.map(n=>ball(n,true)).join(''):'없음'}</div>
+  </div>`;
+  detail.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+(function injectHitHistoryStyle(){
+  if(document.getElementById('hitHistoryV196Style'))return;
+  const st=document.createElement('style');
+  st.id='hitHistoryV196Style';
+  st.textContent=`
+    .summary-metrics .summary-metric-btn{appearance:none;-webkit-appearance:none;font:inherit;color:inherit;background:linear-gradient(180deg,#fbfdff,#f5f8fc);border:1px solid #b9d8ff;border-radius:14px;padding:13px 8px;text-align:center;cursor:pointer;min-width:0;touch-action:manipulation}
+    .summary-metrics .summary-metric-btn b,.summary-metrics .summary-metric-btn span,.summary-metrics .summary-metric-btn em{display:block}.summary-metrics .summary-metric-btn b{font-size:19px;color:#11366b}.summary-metrics .summary-metric-btn span{font-size:12px;color:#667085}.summary-metrics .summary-metric-btn em{font-style:normal;font-size:10px;color:#1769aa;margin-top:3px;font-weight:800}
+    .summary-metrics .summary-metric-btn:active{transform:scale(.985);background:#eef6ff}
+    .hit-sheet-lock{overflow:hidden}.hit-sheet-wrap{position:fixed;inset:0;z-index:99999;visibility:hidden;pointer-events:none}.hit-sheet-wrap.open{visibility:visible;pointer-events:auto}.hit-sheet-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.45);opacity:0;transition:opacity .18s}.hit-sheet-wrap.open .hit-sheet-backdrop{opacity:1}
+    .hit-sheet{position:absolute;left:0;right:0;bottom:0;max-height:88vh;background:#fff;border-radius:22px 22px 0 0;transform:translateY(102%);transition:transform .18s ease;display:flex;flex-direction:column;box-shadow:0 -10px 35px rgba(15,23,42,.22);padding-bottom:env(safe-area-inset-bottom)}.hit-sheet-wrap.open .hit-sheet{transform:translateY(0)}
+    .hit-sheet-handle{width:44px;height:5px;border-radius:99px;background:#d0d5dd;margin:8px auto 4px}.hit-sheet-head{display:flex;justify-content:space-between;align-items:flex-start;padding:8px 16px}.hit-sheet-head b{font-size:17px}.hit-sheet-head p{margin:3px 0 0;color:#667085;font-size:12px}.hit-sheet-head button{border:0;background:#f2f4f7;border-radius:50%;width:34px;height:34px;font-size:16px;color:#344054}
+    .hit-sheet-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;padding:6px 16px 10px}.hit-sheet-tabs button{border:1px solid #d0d5dd;background:#fff;border-radius:11px;padding:8px 4px;font-weight:800;color:#344054}.hit-sheet-tabs button span,.hit-sheet-tabs button small{display:block}.hit-sheet-tabs button small{margin-top:2px;font-size:10px;font-weight:700;opacity:.75}.hit-sheet-tabs button.active{background:#11366b;color:#fff;border-color:#11366b}
+    .hit-sheet-body{overflow:auto;padding:0 12px 12px;min-height:120px}.hit-round-row{width:100%;display:grid;grid-template-columns:66px 1fr 42px;align-items:center;gap:7px;border:0;border-top:1px solid #eef1f5;background:#fff;padding:11px 4px;text-align:left;color:#172033}.hit-round-meta b,.hit-round-meta small{display:block}.hit-round-meta small{font-size:10px;color:#98a2b3;margin-top:2px}.hit-round-balls{display:flex;flex-wrap:wrap;gap:3px;align-items:center}.hit-round-balls i{font-style:normal;color:#98a2b3}.hit-round-row strong{color:#1769aa;text-align:right}.hit-sheet-empty{text-align:center;padding:32px;color:#667085}
+    .hit-sheet-detail{padding:0 12px 16px;overflow:auto}.hit-detail-card{border:1px solid #b9d8ff;background:#f8fbff;border-radius:16px;padding:12px}.hit-detail-head{display:flex;justify-content:space-between;gap:8px;align-items:center}.hit-detail-head span{font-size:11px;color:#667085}.hit-detail-label{font-size:12px;font-weight:900;color:#475467;margin:10px 0 5px}.hit-detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}.hit-detail-grid div{background:#fff;border:1px solid #dbe7f5;border-radius:10px;padding:8px;text-align:center}.hit-detail-grid b,.hit-detail-grid span{display:block}.hit-detail-grid span{font-size:10px;color:#667085;margin-top:2px}.hit-plus{align-self:center;color:#98a2b3;font-weight:900}
+    @media(min-width:720px){.hit-sheet{left:50%;right:auto;width:620px;transform:translate(-50%,102%)}.hit-sheet-wrap.open .hit-sheet{transform:translate(-50%,0)}}`;
+  document.head.appendChild(st);
+})();
