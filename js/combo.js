@@ -30,84 +30,15 @@ function countByThreshold(threshold){return matchRowsFrom(lottoData,threshold).l
 function exactWinningRows(){if(selectedNums.length!==6)return[];const key=selectedNums.slice().sort((a,b)=>a-b).join(',');return lottoData.filter(row=>(row.numbers||[]).slice().sort((a,b)=>a-b).join(',')===key).sort((a,b)=>b.round-a.round)}
 function setStatusText(){const rule=matchMode==='exact'?'완전일치':'부분일치';$('status').textContent=`전체 ${lottoData.length}개 회차 데이터를 불러왔습니다. / 현재 기준: ${rule}`}
 function renderSummary(){const matches=allMatches(),range=rangeMatches(),last=matches[0],gap=last?lottoData.findIndex(x=>x.round===last.row.round)+1:'-',exact=exactWinningRows(),threshold=minHit();let extra='';if(selectedNums.length>=4){extra=`<div><b>${countByThreshold(4)}회</b><span>4개 이상</span></div><div><b>${countByThreshold(5)}회</b><span>5개 이상</span></div>`}else{extra=`<div><b>${threshold}개+</b><span>분석 기준</span></div><div><b>${includeBonus()?'포함':'제외'}</b><span>보너스</span></div>`}$('summary').innerHTML=`<div class="combo-card"><b>${selectedNums.length}개 번호 조합 분석</b><div class="combo-selected">${selectedNums.map(n=>ball(n)).join('')}</div><p class="combo-guide">${matchMode==='exact'?'선택한 번호가 모두 동시에 나온 회차만 분석합니다.':'선택한 번호 중 '+threshold+'개 이상 나온 회차를 기준으로 분석합니다.'}</p><div class="summary-metrics"><div><b>${matches.length}회</b><span>전체 출현</span></div><div><b>${range.length}회</b><span>현재 범위</span></div><div><b>${last?last.row.round+'회':'-'}</b><span>최근 출현</span></div><div><b>${gap}</b><span>미출현 기간</span></div>${extra}<div><b>${selectedNums.length===6?exact.length+'회':'해당없음'}</b><span>완전일치</span></div></div></div>`}
-/* ===== Reverse precise speed v2: 동일 계산식, 반복 스캔만 캐시 ===== */
-const __reverseLearningCache=new Map();
-const __reverseRecentCache=new Map();
-const __reverseFreqCache=new Map();
-function __realDataMeta(){
-  const virtual=lottoData[0]&&lottoData[0].__reverseVirtual?lottoData[0]:null;
-  const offset=virtual?1:0,realCount=Math.max(0,lottoData.length-offset);
-  const first=realCount?Number(lottoData[offset]?.round)||0:0;
-  const last=realCount?Number(lottoData[lottoData.length-1]?.round)||0:0;
-  return{virtual,offset,realCount,sig:`${realCount}|${first}|${last}`};
-}
-function __comboKey(nums){return [...new Set((nums||[]).map(Number).filter(n=>n>=1&&n<=45))].sort((a,b)=>a-b).join(',')}
-function __recentPresence(limit){
-  const meta=__realDataMeta(),ck=`${meta.sig}|${limit}`;
-  if(__reverseRecentCache.has(ck))return __reverseRecentCache.get(ck);
-  const set=new Set();
-  const end=Math.min(lottoData.length,meta.offset+limit);
-  for(let i=meta.offset;i<end;i++)(lottoData[i].numbers||[]).forEach(n=>set.add(n));
-  __reverseRecentCache.set(ck,set);return set;
-}
-function __baseFrequencyMap(){
-  const meta=__realDataMeta(),ck=meta.sig;
-  let base=__reverseFreqCache.get(ck);
-  if(!base){
-    base={};for(let i=1;i<=45;i++)base[i]=0;
-    for(let i=meta.offset;i<lottoData.length;i++)(lottoData[i].numbers||[]).forEach(n=>base[n]++);
-    __reverseFreqCache.set(ck,base);
-  }
-  return{meta,base};
-}
-function companionAnalysis(){
-  const rows=rangeMatches(),counts={};for(let i=1;i<=45;i++)counts[i]=0;
-  const pairCounts=Array.from({length:46},()=>new Uint16Array(46));
-  const numberSets=[];
-  rows.forEach((x,ri)=>{
-    const rp=rowPool(x.row);
-    rp.forEach(n=>{if(!selectedNums.includes(n))counts[n]++});
-    const vals=[...new Set(rp.map(Number).filter(n=>Number.isInteger(n)&&n>=1&&n<=45))];
-    numberSets[ri]=new Set((x.row.numbers||[]).map(Number));
-    for(let i=0;i<vals.length;i++)for(let j=i+1;j<vals.length;j++){const a=vals[i],b=vals[j];pairCounts[a][b]++;pairCounts[b][a]++;}
-  });
-  Object.defineProperty(rows,'__pairCounts',{value:pairCounts,enumerable:false,configurable:true});
-  Object.defineProperty(rows,'__numberSets',{value:numberSets,enumerable:false,configurable:true});
-  const max=Math.max(...Object.values(counts),1);
-  const top=Object.entries(counts).map(([n,c])=>({n:Number(n),count:c,index:Math.round((c/max)*100)})).filter(x=>x.count>0).sort((a,b)=>b.count-a.count||a.n-b.n).slice(0,15);
-  return{rows,top,recommend:top.slice(0,3).map(x=>x.n),counts,max}
-}
-function frequencyMap(rows){
-  if(rows===lottoData){
-    const {meta,base}=__baseFrequencyMap(),m={...base};
-    if(meta.virtual)(meta.virtual.numbers||[]).forEach(n=>{if(n>=1&&n<=45)m[n]=(m[n]||0)+1});
-    return m;
-  }
-  const m={};for(let i=1;i<=45;i++)m[i]=0;rows.forEach(row=>(row.numbers||[]).forEach(n=>m[n]++));return m
-}
-function pairScore(a,b,rows){
-  if(rows&&rows.__pairCounts)return Number(rows.__pairCounts[a]?.[b]||0);
-  let c=0;rows.forEach(x=>{const p=rowPool(x.row||x);if(p.includes(a)&&p.includes(b))c++});return c
-}
+function companionAnalysis(){const rows=rangeMatches(),counts={};for(let i=1;i<=45;i++)counts[i]=0;rows.forEach(x=>{rowPool(x.row).forEach(n=>{if(!selectedNums.includes(n))counts[n]++})});const max=Math.max(...Object.values(counts),1);const top=Object.entries(counts).map(([n,c])=>({n:Number(n),count:c,index:Math.round((c/max)*100)})).filter(x=>x.count>0).sort((a,b)=>b.count-a.count||a.n-b.n).slice(0,15);return{rows,top,recommend:top.slice(0,3).map(x=>x.n),counts,max}}
+function frequencyMap(rows){const m={};for(let i=1;i<=45;i++)m[i]=0;rows.forEach(row=>(row.numbers||[]).forEach(n=>m[n]++));return m}
+function pairScore(a,b,rows){let c=0;rows.forEach(x=>{const p=rowPool(x.row||x);if(p.includes(a)&&p.includes(b))c++});return c}
 function zoneBalanceScore(nums){const zones=[0,0,0,0,0];nums.forEach(n=>{if(n<=9)zones[0]++;else if(n<=19)zones[1]++;else if(n<=29)zones[2]++;else if(n<=39)zones[3]++;else zones[4]++});const used=zones.filter(x=>x>0).length,max=Math.max(...zones);return Math.max(0,used*6-(max>3?10:0))}
 function oddEvenScore(nums){const odd=nums.filter(n=>n%2).length;return Math.max(0,14-Math.abs(3-odd)*5)}
-function recentTrendScore(nums){
-  const meta=__realDataMeta(),set=__recentPresence(meta.virtual?19:20),vnums=meta.virtual?(meta.virtual.numbers||[]):null;
-  const hits=nums.filter(n=>set.has(n)||(vnums&&vnums.includes(n))).length;
-  return Math.max(0,12-Math.max(0,hits-3)*3)
-}
+function recentTrendScore(nums){const recent=lottoData.slice(0,20).flatMap(x=>x.numbers||[]);const hits=nums.filter(n=>recent.includes(n)).length;return Math.max(0,12-Math.max(0,hits-3)*3)}
 function longTrendScore(nums,allFreq){const vals=nums.map(n=>allFreq[n]||0),avg=vals.reduce((a,b)=>a+b,0)/vals.length;return Math.min(18,Math.round(avg*0.3))}
 function companionIndexScore(nums,data){let s=0;nums.forEach(n=>{if(!selectedNums.includes(n))s+=(data.counts[n]||0)*8});for(let i=0;i<nums.length;i++){for(let j=i+1;j<nums.length;j++)s+=pairScore(nums[i],nums[j],data.rows)*2}return s}
-function historicalHitScore(nums,rows){
-  let score=0;const sets=rows&&rows.__numberSets;
-  const limit=Math.min(100,rows.length);
-  for(let i=0;i<limit;i++){
-    const p=sets?.[i]||(rows[i].row.numbers||[]);
-    const h=sets?nums.reduce((c,n)=>c+(p.has(n)?1:0),0):nums.filter(n=>p.includes(n)).length;
-    if(h>=3)score+=h*h;
-  }
-  return score
-}
+function historicalHitScore(nums,rows){let score=0;rows.slice(0,100).forEach(x=>{const p=x.row.numbers||[],h=nums.filter(n=>p.includes(n)).length;if(h>=3)score+=h*h});return score}
 function gradeFromRank(i){if(i===0)return'S등급';if(i<=3)return'A등급';if(i<=6)return'B등급';return'실험'}
 function starByTrust(t){if(t>=88)return'★★★★★';if(t>=80)return'★★★★☆';if(t>=72)return'★★★☆☆';return'★★☆☆☆'}
 
@@ -257,31 +188,7 @@ function learnedHitRate(nums){
   const recent=rows.filter(x=>recentSet.has(x.row.round)&&(x.normal>=3||x.total>=3)).length;
   return{hit3,hit4,hit5,best,avg,recent};
 }
-function learningScore(nums){
-  const meta=__realDataMeta(),k=`${meta.sig}|${__comboKey(nums)}`;
-  let b=__reverseLearningCache.get(k);
-  if(!b){
-    let hit3=0,hit4=0,hit5=0,totalNormal=0,recent100=0,recent99=0;
-    for(let i=meta.offset,ri=0;i<lottoData.length;i++,ri++){
-      const row=lottoData[i],p=row.numbers||[];
-      let normal=0;for(const n of nums)if(p.includes(n))normal++;
-      const bonus=nums.includes(row.bonus),total=normal+(bonus?1:0);
-      const h3=normal>=3||total>=3,h4=normal>=4||total>=4,h5=normal>=5||total>=5;
-      if(h3)hit3++;if(h4)hit4++;if(h5)hit5++;totalNormal+=normal;
-      if(ri<100&&h3)recent100++;if(ri<99&&h3)recent99++;
-    }
-    b={hit3,hit4,hit5,totalNormal,recent100,recent99,realCount:meta.realCount};
-    __reverseLearningCache.set(k,b);
-  }
-  let hit3=b.hit3,hit4=b.hit4,hit5=b.hit5,totalNormal=b.totalNormal,recent=b.recent100,den=b.realCount;
-  if(meta.virtual){
-    const vp=meta.virtual.numbers||[];let normal=0;for(const n of nums)if(vp.includes(n))normal++;
-    if(normal>=3)hit3++;if(normal>=4)hit4++;if(normal>=5)hit5++;
-    totalNormal+=normal;den++;recent=b.recent99+(normal>=3?1:0);
-  }
-  const avg=Number((totalNormal/Math.max(1,den)).toFixed(2));
-  return Math.min(32,hit3*0.08+hit4*0.55+hit5*2.5+recent*0.18+avg*2)
-}
+function learningScore(nums){const h=learnedHitRate(nums);return Math.min(32,h.hit3*0.08+h.hit4*0.55+h.hit5*2.5+h.recent*0.18+Number(h.avg)*2)}
 function renderComboReport(nums){const h=learnedHitRate(nums);const best=h.best?`${h.best.row.round}회 ${h.best.normal}${h.best.bonus?'+B':''}개`:'기록 없음';return `<p class="combo-guide">성적표: 3개+ ${h.hit3}회 · 4개+ ${h.hit4}회 · 5개+ ${h.hit5}회 · 평균 ${h.avg}개 · 최고 ${best}</p>`}
 function savedComboKey(){return 'haengun_combo_saved_v2'}
 function loadSavedCombos(){try{return JSON.parse(localStorage.getItem(savedComboKey())||'[]')}catch(e){return[]}}
