@@ -6,6 +6,7 @@
   const key=arr=>clean(arr).join(',');
   const sleep=()=>new Promise(resolve=>setTimeout(resolve,0));
   const state={running:false,last:null};
+  let __quickFastV5Active=false;
 
   function rows(){
     const source=global.LOTTO_DATA||global.lottoData||[];
@@ -73,7 +74,8 @@
   function evaluateVirtualGate(base,nums,cutoff,cache){
     const k=cache?`${cacheKey(cache,nums)}|C${cutoff}`:null;
     if(cache&&cache.gate.has(k))return cache.gate.get(k);
-    const result=withVirtualDraw(nums,()=>{
+    const virtualRunner=__quickFastV5Active?withVirtualDrawLite:withVirtualDraw;
+    const result=virtualRunner(nums,()=>{
       if(typeof global.ScoreFusionEngine?.evaluateCandidateGate==='function')return global.ScoreFusionEngine.evaluateCandidateGate(base,nums,cutoff);
       const full=global.ScoreFusionEngine?.evaluateCandidate?.(base,nums)||null;
       return full?{...full,pruned:false,upperBound:full.total}:null;
@@ -446,10 +448,20 @@
     const onProgress=typeof opts.onProgress==='function'?opts.onProgress:()=>{};
     const cache=createRunCache(base,cutoff);
     state.running=true;
+    let quickSessionStarted=false;
     try{
       onProgress('현재 Fusion AI Score를 계산하고 있습니다...');
       const baseline=evaluateReal(base,base,cache);
       const sameVirtual=evaluateVirtualFull(base,base,cache);
+
+      // Fast v5: quick 역산 동안 Pattern 과거 맵을 한 번만 준비합니다.
+      // 이후 후보별 가상행은 Classic/Frequency 계산에만 잠시 삽입하고
+      // Pattern은 증분 가상계산을 사용해 전체 캐시 재생성을 피합니다.
+      if(typeof global.ScoreFusionEngine?.beginQuickVirtualSession==='function'){
+        const quickSession=global.ScoreFusionEngine.beginQuickVirtualSession();
+        __quickFastV5Active=!!quickSession?.patternReady;
+        quickSessionStarted=__quickFastV5Active;
+      }
 
       onProgress(`1단계 후보를 ${cutoff}점 생존 커트라인으로 선별합니다...`);
       const oneResult=await stageOne(base,target,cutoff,cache,onProgress);
@@ -502,7 +514,13 @@
       };
       state.last=result;return result;
     }catch(e){console.error('ReverseInferenceEngine',e);return {error:e.message||String(e)};}
-    finally{state.running=false;invalidate();}
+    finally{
+      if(quickSessionStarted){
+        try{global.ScoreFusionEngine?.endQuickVirtualSession?.();}catch(e){}
+      }
+      __quickFastV5Active=false;
+      state.running=false;invalidate();
+    }
   }
 
   global.ReverseInferenceEngine=Object.freeze({run,runPrecise,getState:()=>({...state}),evaluateReal,evaluateVirtualFull,candidatePool25});
