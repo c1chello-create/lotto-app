@@ -6,7 +6,6 @@
   const key=arr=>clean(arr).join(',');
   const sleep=()=>new Promise(resolve=>setTimeout(resolve,0));
   const state={running:false,last:null};
-  let __quickFastV5Active=false;
 
   function rows(){
     const source=global.LOTTO_DATA||global.lottoData||[];
@@ -71,15 +70,37 @@
     if(cache)cache.real.set(k,result);
     return result;
   }
+  let __fastRegularSession=false;
   function evaluateVirtualGate(base,nums,cutoff,cache){
     const k=cache?`${cacheKey(cache,nums)}|C${cutoff}`:null;
     if(cache&&cache.gate.has(k))return cache.gate.get(k);
-    const virtualRunner=__quickFastV5Active?withVirtualDrawLite:withVirtualDraw;
-    const result=virtualRunner(nums,()=>{
-      if(typeof global.ScoreFusionEngine?.evaluateCandidateGate==='function')return global.ScoreFusionEngine.evaluateCandidateGate(base,nums,cutoff);
-      const full=global.ScoreFusionEngine?.evaluateCandidate?.(base,nums)||null;
-      return full?{...full,pruned:false,upperBound:full.total}:null;
-    });
+    const sf=global.ScoreFusionEngine;
+    let result=null;
+
+    // +1회 일반 역산 Fast v4 경로.
+    // 목표점수 정밀역산과 동일하게 싼 안전상한 -> 정확한 상한 -> Pattern 증분계산 순으로 처리합니다.
+    // cutoff-0.5 미만일 때만 제외하므로 기존 Fusion 산식/판정값은 바꾸지 않습니다.
+    if(__fastRegularSession&&sf?.estimateVirtualUpperBoundFast&&sf?.evaluateCandidateBound&&sf?.completeCandidateFromBound){
+      const fast=sf.estimateVirtualUpperBoundFast(base,nums);
+      const cutoffNum=Number.isFinite(Number(cutoff))?Number(cutoff):80;
+      if(!fast||Number(fast.upperBound)<cutoffNum-0.5){
+        result={...(fast||{}),nums:clean(nums),pruned:true,cutoff:cutoffNum,upperBound:Number(fast?.upperBound)||0,fastPruned:true};
+      }else{
+        const bound=withVirtualDrawLite(nums,()=>sf.evaluateCandidateBound(base,nums));
+        if(!bound||Number(bound.upperBound)<cutoffNum-0.5){
+          result=bound?{...bound,pruned:true,cutoff:cutoffNum}:null;
+        }else{
+          const full=sf.completeCandidateFromBound(bound);
+          result=full?{...full,cutoff:cutoffNum}:null;
+        }
+      }
+    }else{
+      result=withVirtualDraw(nums,()=>{
+        if(typeof sf?.evaluateCandidateGate==='function')return sf.evaluateCandidateGate(base,nums,cutoff);
+        const full=sf?.evaluateCandidate?.(base,nums)||null;
+        return full?{...full,pruned:false,upperBound:full.total}:null;
+      });
+    }
     if(cache)cache.gate.set(k,result);
     return result;
   }
@@ -165,7 +186,7 @@
           const item=decorate(base,nums,real,virtual,1,{upperBound:virtual.upperBound});
           item.targetMet=item.after>=target;out.push(item);
         }
-        if(done%10===0){onProgress?.(`1단계 ${done}/${total} · ${cutoff}점 생존 ${out.length} · 제외 ${pruned}`);await sleep();}
+        if(done%30===0||done===total){onProgress?.(`1단계 ${done}/${total} · ${cutoff}점 생존 ${out.length} · 제외 ${pruned}`);await sleep();}
       }
     }
     return {items:dedupe(out),stats:{evaluated:done,pruned,survived:out.length,survivedNumbers:survivedNumbers.size}};
@@ -194,7 +215,7 @@
             item.targetMet=item.after>=target;out.push(item);
             item.added.forEach(n=>survivedNumbers.add(n));
           }
-          if(ops%4===0){onProgress?.(`${depth}단계 ${ops}/${opLimit} · ${cutoff}점 생존 ${out.length} · 제외 ${pruned}`);await new Promise(r=>setTimeout(r,8));}
+          if(ops%24===0||ops===opLimit){onProgress?.(`${depth}단계 ${ops}/${opLimit} · ${cutoff}점 생존 ${out.length} · 제외 ${pruned}`);await sleep();}
         }
         if(ops>=opLimit)break;
       }
@@ -264,7 +285,7 @@
     const missing=base.filter(n=>!pool.includes(n));
     if(missing.length)return {error:`현재 분석번호 ${missing.join('·')}번이 25개 후보풀에 없습니다.`};
     const target=Math.max(60,Math.min(98,Number(opts.target)||95));
-    const maxReplace=Math.max(1,Math.min(3,Number(opts.maxReplace)||3));
+    const maxReplace=Math.max(1,Math.min(6,Number(opts.maxReplace)||6));
     const onProgress=typeof opts.onProgress==='function'?opts.onProgress:()=>{};
     const cache=createRunCache(base,target);
     const addPool=pool.filter(n=>!base.includes(n));
@@ -273,7 +294,7 @@
     state.running=true;
     let sessionStarted=false;
     try{
-      onProgress(`25개 후보풀 정밀 역산 준비 · 목표 ${target}점 · Fast v4`);
+      onProgress(`25개 후보풀 전체 정밀 역산 준비 · 목표 ${target}점 · Fast v5`);
       // 사용자가 보던 현재점수/현재조합+1회 값은 기존 방식으로 1회만 계산합니다.
       const baseline=evaluateReal(base,base,cache);
       const sameVirtual=evaluateVirtualFull(base,base,cache);
@@ -289,7 +310,8 @@
 
       const stages=[];
       const stageMap=new Map();
-      let totalExpected=0;
+      // Fast v5: 현재 조합(0개 교체) + 1~6개 교체를 모두 포함하면 C(25,6)=177,100개 전체 공간입니다.
+      let totalExpected=1;
       for(let depth=1;depth<=maxReplace;depth++){
         const stageTotal=combinations(base,depth).length*combinations(addPool,depth).length;
         totalExpected+=stageTotal;
@@ -298,18 +320,23 @@
       }
 
       const records=[];
-      let totalDone=0,targetPruned=0,targetGatePassed=0;
-      let exactBoundCount=0,patternEvaluated=0;
+      let totalDone=1,targetPruned=0,targetGatePassed=0;
+      let exactBoundCount=0,patternEvaluated=1;
       let targetHits=[];
 
-      // 1차: 매우 싼 안전 상한으로 95점 가능성이 전혀 없는 후보는 Classic 계산 전 제거합니다.
+      // 현재 조합 자체의 +1회 결과도 전체 25개 조합 공간의 한 후보로 포함합니다.
+      const baseItem=decorate(base,base,baseline,sameVirtual,0,{upperBound:sameVirtual.total});
+      baseItem.targetMet=Number(sameVirtual.total)>=target;
+      if(baseItem.targetMet)targetHits.push(baseItem);
+
+      // Fast v5 1차: 전체 25개 조합 공간에서 목표점수 가능성이 전혀 없는 후보는 Classic 계산 전 제거합니다.
       // 빠른 상한을 통과한 후보만 정확한 Classic/Frequency 상한과 Pattern을 계산합니다.
       for(let depth=1;depth<=maxReplace;depth++){
         const removals=combinations(base,depth);
         const additions=combinations(addPool,depth);
         const stageTotal=removals.length*additions.length;
         const st=stageMap.get(depth);
-        onProgress(`${depth}개 교체 Fast v4 탐색 시작 · ${stageTotal.toLocaleString()}개`);
+        onProgress(`${depth}개 교체 Fast v5 전체탐색 시작 · ${stageTotal.toLocaleString()}개`);
         for(const removed of removals){
           const kept=base.filter(n=>!removed.includes(n));
           for(const added of additions){
@@ -354,8 +381,16 @@
       }
 
       targetHits=dedupe(targetHits);
+      // 목표점수 역산에서는 높은 점수보다 목표점수에 가장 가까운 조합을 우선합니다.
+      // 예: 목표 95이면 95점 조합이 96~98점보다 먼저 표시됩니다.
+      const compareTarget=(a,b)=>Math.abs((a.after||0)-target)-Math.abs((b.after||0)-target)
+        || a.replaceCount-b.replaceCount
+        || (b.virtual?.pattern?.confidence||0)-(a.virtual?.pattern?.confidence||0)
+        || b.delta-a.delta
+        || key(a.nums).localeCompare(key(b.nums),undefined,{numeric:true});
+      targetHits.sort(compareTarget);
       let reached=targetHits.length>0;
-      let top=reached?targetHits.slice(0,10):[];
+      let top=reached?targetHits.slice(0,10):[baseItem];
       let fallbackRefined=0;
 
       if(!reached){
@@ -413,7 +448,7 @@
       const endedAt=(global.performance&&typeof global.performance.now==='function')?global.performance.now():Date.now();
       const elapsedMs=Math.max(0,endedAt-startedAt),elapsedSec=elapsedMs/1000;
       const result={
-        mode:'precise',exact:true,engineVersion:'fast-v4',base,target,maxReplace,pool25:pool,poolSize:pool.length,
+        mode:'precise',exact:true,engineVersion:'fast-v5-full25',base,target,maxReplace,pool25:pool,poolSize:pool.length,
         baseline,sameVirtual,best,top,stages,reached,targetMatchCount:targetHits.length,
         reachedReplace:reached?(targetHits[0]?.replaceCount||null):null,
         totals:{
@@ -425,7 +460,7 @@
           perSecond:elapsedSec>0?Math.round(totalDone/elapsedSec):0,yieldEvery
         },
         virtualRound:nextRound(),
-        note:`Fast v4는 25개 후보풀의 1~${maxReplace}개 교체 조합 ${totalDone.toLocaleString()}개를 빠짐없이 검사합니다. 비교 기준 Classic TOP10/정규화 축은 한 번의 정밀 역산 동안 고정하고, 각 후보의 가상 +1회 Classic·동반빈도·Pattern 효과는 다시 계산합니다. Pattern 과거 맵은 1회만 준비하고 후보별 +1 효과만 정확히 증분 적용합니다. 목표점수 판정과 최고 TOP10은 안전한 상한값(branch-and-bound)으로 후보를 제외하므로 완전탐색 범위를 줄이지 않습니다. Fusion 가중치와 Pattern 계산식은 변경하지 않습니다.`
+        note:`Fast v5는 현재 조합을 포함해 25개 후보풀에서 가능한 6개 조합 C(25,6)=177,100개 전체를 검사합니다. 목표 ${target}점 이상 조합이 있으면 목표점수에 가장 가까운 조합을 우선 표시하고, 목표 미달이면 실제 최고점 TOP10을 확정합니다. 비교 기준 Classic TOP10/정규화 축은 한 번의 정밀 역산 동안 고정하고, 각 후보의 가상 +1회 Classic·동반빈도·Pattern 효과는 다시 계산합니다. Pattern 과거 맵은 1회만 준비하고 후보별 +1 효과만 정확히 증분 적용합니다. 안전한 상한값(branch-and-bound)은 목표 도달이 수학적으로 불가능한 후보만 제외하며 Fusion 가중치와 Pattern 계산식은 변경하지 않습니다.`
       };
       state.last=result;return result;
     }catch(e){
@@ -447,23 +482,23 @@
     const maxReplace=Math.max(1,Math.min(3,Number(opts.maxReplace)||2));
     const onProgress=typeof opts.onProgress==='function'?opts.onProgress:()=>{};
     const cache=createRunCache(base,cutoff);
+    const sf=global.ScoreFusionEngine;
+    const fastReady=!!(sf?.beginPreciseSession&&sf?.endPreciseSession&&sf?.estimateVirtualUpperBoundFast&&sf?.evaluateCandidateBound&&sf?.completeCandidateFromBound);
+    const startedAt=(global.performance&&typeof global.performance.now==='function')?global.performance.now():Date.now();
     state.running=true;
-    let quickSessionStarted=false;
+    let sessionStarted=false;
     try{
       onProgress('현재 Fusion AI Score를 계산하고 있습니다...');
+      // 현재점수와 현재조합 +1회 점수는 기존 전체 계산으로 1회만 산출합니다.
       const baseline=evaluateReal(base,base,cache);
       const sameVirtual=evaluateVirtualFull(base,base,cache);
 
-      // Fast v5: quick 역산 동안 Pattern 과거 맵을 한 번만 준비합니다.
-      // 이후 후보별 가상행은 Classic/Frequency 계산에만 잠시 삽입하고
-      // Pattern은 증분 가상계산을 사용해 전체 캐시 재생성을 피합니다.
-      if(typeof global.ScoreFusionEngine?.beginQuickVirtualSession==='function'){
-        const quickSession=global.ScoreFusionEngine.beginQuickVirtualSession();
-        __quickFastV5Active=!!quickSession?.patternReady;
-        quickSessionStarted=__quickFastV5Active;
+      if(fastReady){
+        sf.beginPreciseSession(base);
+        sessionStarted=true;
+        __fastRegularSession=true;
       }
-
-      onProgress(`1단계 후보를 ${cutoff}점 생존 커트라인으로 선별합니다...`);
+      onProgress(`1단계 후보를 ${cutoff}점 생존 커트라인으로 선별합니다${fastReady?' · Fast v4':''}...`);
       const oneResult=await stageOne(base,target,cutoff,cache,onProgress);
       const one=oneResult.items;
       const stages=[{replaceCount:1,best:one[0]||null,count:oneResult.stats.evaluated,kept:oneResult.stats.survived,pruned:oneResult.stats.pruned,numberCount:oneResult.stats.survivedNumbers,met:one.filter(x=>x.targetMet).length}];
@@ -475,7 +510,7 @@
 
       if(!met.length&&maxReplace>=2&&one.length&&addPool.length){
         onProgress(`1단계 생존 번호 ${oneResult.stats.survivedNumbers}개 → 2차 후보 ${addPool.length}개(핵심 ${shortlist1.core.length}+보조 ${shortlist1.support.length})로 압축했습니다.`);
-        await new Promise(r=>setTimeout(r,20));
+        await sleep();
         const twoResult=await expand(base,one,addPool,target,cutoff,cache,2,onProgress);
         const two=twoResult.items;
         stages.push({replaceCount:2,best:two[0]||null,count:twoResult.stats.evaluated,kept:twoResult.stats.survived,pruned:twoResult.stats.pruned,numberCount:twoResult.stats.survivedNumbers,met:two.filter(x=>x.targetMet).length});
@@ -484,7 +519,7 @@
           shortlist2=compressCandidatePool(base,two,8,12);
           const pool3=shortlist2.nums;
           onProgress(`2단계 결과 → ${pool3.length}개(핵심 ${shortlist2.core.length}+보조 ${shortlist2.support.length})로 다시 압축해 3단계를 계산합니다...`);
-          await new Promise(r=>setTimeout(r,20));
+          await sleep();
           const threeResult=await expand(base,two,pool3,target,cutoff,cache,3,onProgress);
           const three=threeResult.items;
           stages.push({replaceCount:3,best:three[0]||null,count:threeResult.stats.evaluated,kept:threeResult.stats.survived,pruned:threeResult.stats.pruned,numberCount:threeResult.stats.survivedNumbers,met:three.filter(x=>x.targetMet).length});
@@ -510,15 +545,15 @@
         inferred:inferredNumbers(inferenceSource,12),
         shortlist:{stage1:shortlist1,stage2:shortlist2,active:(shortlist2&&shortlist2.nums.length)?shortlist2:shortlist1},
         virtualRound:nextRound(),totals,
-        note:`Fusion 계산식은 변경하지 않았습니다. ${cutoff}점은 1차 연산 중단용 커트라인입니다. 1단계가 끝나면 생존 번호를 점수·반복·상승폭으로 다시 평가해 핵심 8개와 보조 최대 4개, 총 8~12개로 압축합니다. 이후 단계는 압축된 번호군만 계산하므로 후보 수가 줄어들수록 연산량도 함께 줄어듭니다.`
+        engineVersion:fastReady?'plus1-fast-v4':'legacy',
+        performance:(()=>{const ended=(global.performance&&typeof global.performance.now==='function')?global.performance.now():Date.now();return {elapsedMs:Math.round(Math.max(0,ended-startedAt))};})(),
+        note:`Fusion 계산식은 변경하지 않았습니다. ${cutoff}점은 1차 연산 중단용 커트라인입니다. ${fastReady?'Fast v4 경로는 목표점수 정밀역산과 같은 사전 Pattern 컨텍스트·안전 상한·후보별 +1 증분계산을 사용합니다. ':''}1단계가 끝나면 생존 번호를 점수·반복·상승폭으로 다시 평가해 핵심 8개와 보조 최대 4개, 총 8~12개로 압축합니다. 이후 단계는 압축된 번호군만 계산하므로 후보 수가 줄어들수록 연산량도 함께 줄어듭니다.`
       };
       state.last=result;return result;
     }catch(e){console.error('ReverseInferenceEngine',e);return {error:e.message||String(e)};}
     finally{
-      if(quickSessionStarted){
-        try{global.ScoreFusionEngine?.endQuickVirtualSession?.();}catch(e){}
-      }
-      __quickFastV5Active=false;
+      __fastRegularSession=false;
+      if(sessionStarted)try{sf.endPreciseSession?.();}catch(e){}
       state.running=false;invalidate();
     }
   }

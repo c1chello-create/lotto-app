@@ -168,7 +168,7 @@
   }
   function patternMetricsVirtual(nums){
     const eng=global.CompanionCombinationEngine;
-    const ctx=__preciseSession?.patternContext||__quickVirtualSession?.patternContext;
+    const ctx=__preciseSession?.patternContext;
     if(!eng||!ctx||typeof eng.scorePatternComboV3Virtual!=='function')return patternMetrics(nums);
     try{
       const p=eng.scorePatternComboV3Virtual(clean(nums),ctx);
@@ -250,24 +250,6 @@
   // 매 후보마다 makeRankedCombos 전체를 다시 생성하던 병목을 제거하면서,
   // 후보 자체의 가상 +1회 효과는 그대로 다시 계산합니다.
   let __preciseSession=null;
-  let __quickVirtualSession=null;
-
-  // +1회 가상출현 역산 Fast v5 session.
-  // 기존 quick 역산의 Classic/빈도/후보선별 계산식은 그대로 두고,
-  // Pattern 가상 +1회 계산에 필요한 과거 맵만 1회 사전계산합니다.
-  function beginQuickVirtualSession(){
-    let patternContext=null;
-    try{
-      const eng=global.CompanionCombinationEngine;
-      if(typeof eng?.prepareVirtualPatternContext==='function'){
-        patternContext=eng.prepareVirtualPatternContext({scope:currentRange(),includeBonus:includeBonus()});
-      }
-    }catch(e){}
-    __quickVirtualSession={patternContext};
-    return {patternReady:!!patternContext};
-  }
-  function endQuickVirtualSession(){__quickVirtualSession=null;}
-
   function beginPreciseSession(baseNums){
     const base=clean(baseNums);
     if(base.length!==6)return null;
@@ -351,8 +333,7 @@
 
   function completeCandidateFromBound(bound){
     if(!bound||!Array.isArray(bound.nums)||bound.nums.length!==6)return null;
-    const virtualPatternContext=__preciseSession?.patternContext||__quickVirtualSession?.patternContext;
-    const pattern=(bound.__virtualCandidate&&virtualPatternContext?patternMetricsVirtual(bound.nums):patternMetrics(bound.nums))||{strength:0,confidence:0,adjusted:0,components:{},confidenceParts:{}};
+    const pattern=(bound.__virtualCandidate&&__preciseSession?.patternContext?patternMetricsVirtual(bound.nums):patternMetrics(bound.nums))||{strength:0,confidence:0,adjusted:0,components:{},confidenceParts:{}};
     const contributions={
       classic:Number(bound.contributions?.classic)||0,
       pattern:Number((pattern.adjusted*WEIGHTS.pattern/100).toFixed(1)),
@@ -399,5 +380,5 @@
     };
   }
 
-  global.ScoreFusionEngine=Object.freeze({WEIGHTS,analyze,evaluateCandidate,evaluateCandidateGate,evaluateCandidateBound,completeCandidateFromBound,beginPreciseSession,endPreciseSession,beginQuickVirtualSession,endQuickVirtualSession,estimateVirtualUpperBoundFast,virtualSelfFrequencyScore,frequencyMetrics,patternMetrics,currentSelection});
+  global.ScoreFusionEngine=Object.freeze({WEIGHTS,analyze,evaluateCandidate,evaluateCandidateGate,evaluateCandidateBound,completeCandidateFromBound,beginPreciseSession,endPreciseSession,estimateVirtualUpperBoundFast,virtualSelfFrequencyScore,frequencyMetrics,patternMetrics,currentSelection});
 })(window);
