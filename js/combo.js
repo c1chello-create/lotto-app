@@ -1305,9 +1305,9 @@ function renderDreamBaseEditor(keyword){
       <b>✏️ 꿈번호 1~3개 수정</b>
       <p class="combo-guide">제외할 기본 꿈번호와 새로 넣을 번호를 같은 개수로 입력하세요.</p>
       <label class="combo-guide"><b>제외번호</b></label>
-      <input id="dreamRemoveNums" class="combo-input" inputmode="numeric" placeholder="예: 30 44">
+      <input id="dreamRemoveNums" class="combo-input" inputmode="text" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="예: 30 44">
       <label class="combo-guide"><b>추가번호</b></label>
-      <input id="dreamAddNums" class="combo-input" inputmode="numeric" placeholder="예: 27 31">
+      <input id="dreamAddNums" class="combo-input" inputmode="text" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="예: 27 31">
       <button id="dreamRunEditedPreviewBtn" class="combo-btn" type="button">수정 꿈번호로 Preview 실행</button>
       <div id="dreamEditStatus"></div>
     </div>
