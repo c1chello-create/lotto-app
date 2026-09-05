@@ -175,9 +175,23 @@ function renderDreamBridge(){
   let box=document.getElementById('dreamBridge');
   if(!box){const first=document.querySelector('.combo-card');if(first){box=document.createElement('div');box.id='dreamBridge';first.insertAdjacentElement('afterend',box)}}
   if(!box)return;
-  if(!box.innerHTML)box.innerHTML=`<div class="combo-card" style="background:#f7fff4"><b>🌙 꿈해몽 연동</b><p class="combo-guide">꿈 키워드를 입력하면 기본 꿈번호와 AI Preview 보정 결과를 별도 카드에 표시합니다.</p><input id="dreamComboInput" class="combo-input" placeholder="예: 물, 새, 돼지, 도자기"><label class="checkline"><input type="checkbox" id="dreamAiPreview" checked> 꿈해몽 AI Preview 적용 <span style="color:#667085">(기본번호 + 1단계 동반번호 보정)</span></label><button id="dreamComboBtn" class="combo-btn" style="background:#2f7d32">꿈해몽 Preview 보기</button><div id="dreamPreviewResult"></div></div>`;
+  if(!box.innerHTML)box.innerHTML=`<div class="combo-card" style="background:#f7fff4"><b>🌙 꿈해몽 연동</b><p class="combo-guide">꿈 키워드로 기본 꿈번호 6개를 만든 뒤, 사용자가 1~3개를 수정하고 그 수정된 6개로 AI Preview와 Chain 분석을 시작합니다.</p><input id="dreamComboInput" class="combo-input" placeholder="예: 물, 새, 돼지, 도자기"><label class="checkline"><input type="checkbox" id="dreamAiPreview" checked> 꿈해몽 AI Preview 적용 <span style="color:#667085">(사용자 수정 seed + 가변 유지 Chain)</span></label><button id="dreamComboBtn" class="combo-btn" style="background:#2f7d32">기본 꿈번호 만들기</button><div id="dreamPreviewResult"></div></div>`;
   const btn=document.getElementById('dreamComboBtn');
-  if(btn&&!btn.dataset.bound){btn.dataset.bound='1';btn.onclick=()=>{const kw=(document.getElementById('dreamComboInput').value||'').trim();if(!kw){alert('꿈 키워드를 입력하세요.');return}const usePreview=document.getElementById('dreamAiPreview')?document.getElementById('dreamAiPreview').checked:true;if(usePreview&&lottoData.length){const preview=dreamCompanionPreview(kw);renderDreamPreviewResult(preview)}else{const base=dreamNumberMap(kw);lastDreamPreviewInfo={keyword:kw,base,top:[],addon:[],final:base,range:'기본',rows:0};renderDreamPreviewResult(lastDreamPreviewInfo)}}}
+  if(btn&&!btn.dataset.bound){
+    btn.dataset.bound='1';
+    btn.onclick=()=>{
+      const kw=(document.getElementById('dreamComboInput').value||'').trim();
+      if(!kw){alert('꿈 키워드를 입력하세요.');return}
+      const usePreview=document.getElementById('dreamAiPreview')?document.getElementById('dreamAiPreview').checked:true;
+      if(usePreview&&lottoData.length){
+        renderDreamBaseEditor(kw);
+      }else{
+        const base=dreamNumberMap(kw);
+        lastDreamPreviewInfo={keyword:kw,originalBase:base,base,modifiedBase:base,top:[],addon:[],core:base,keepCount:6,replaceCount:0,final:base,chain:[],range:'기본',rows:0};
+        renderDreamPreviewResult(lastDreamPreviewInfo);
+      }
+    };
+  }
 }
 function learnedHitRate(nums){
   const rows=lottoData.map(row=>{const normal=nums.filter(n=>(row.numbers||[]).includes(n)).length,bonus=nums.includes(row.bonus);return{row,normal,bonus,total:normal+(bonus?1:0)}});
@@ -978,35 +992,113 @@ function dreamChainCompanionFromSeed(seedNums, rows){
     .slice(0,8);
 }
 
-function dreamChainMakePreview(base, top){
-  const addon = top.slice(0,2).map(x=>x.n);
-  let final = [...base.slice(0,4), ...addon];
+function dreamSeedStrength(seedNums, rows){
+  const stat={};
+  seedNums.forEach(n=>stat[n]={n,coRounds:0,linkHits:0,partners:new Set()});
 
-  [...base, ...top.map(x=>x.n)].forEach(n=>{
-    if(final.length<6 && !final.includes(n)) final.push(n);
+  // 매 단계마다 실제 원 회차 데이터 rows에서 현재 seed 번호끼리의 동시출현을 다시 계산합니다.
+  rows.forEach(row=>{
+    const pool=[...new Set(rowPool(row).filter(Boolean))];
+    const hits=seedNums.filter(n=>pool.includes(n));
+    if(hits.length<2)return;
+    hits.forEach(n=>{
+      const partners=hits.filter(x=>x!==n);
+      stat[n].coRounds++;
+      stat[n].linkHits+=partners.length;
+      partners.forEach(x=>stat[n].partners.add(x));
+    });
   });
 
+  return Object.values(stat).map(x=>{
+    const diversity=x.partners.size;
+    // 후보와 비교 가능한 동일 계열 척도: 동시출현 회차 + 연결 횟수 + 연결 다양성
+    const support=x.coRounds*5+x.linkHits*2+diversity*3;
+    return {n:x.n,support,coRounds:x.coRounds,linkHits:x.linkHits,diversity};
+  }).sort((a,b)=>b.support-a.support||b.coRounds-a.coRounds||b.linkHits-a.linkHits||b.diversity-a.diversity||a.n-b.n);
+}
+
+function dreamCandidateStrength(item){
+  if(!item)return {support:0,count:0,linkHits:0,diversity:0};
+  const links=Object.values(item.bases||{}).map(Number).filter(v=>v>0);
+  const linkHits=links.reduce((s,v)=>s+v,0);
+  const diversity=links.length;
+  const support=(Number(item.count)||0)*5+linkHits*2+diversity*3;
+  return {support,count:Number(item.count)||0,linkHits,diversity};
+}
+
+function dreamChainMakePreview(seed, top, rows){
+  const seedRank=dreamSeedStrength(seed,rows);
+  const challengers=(top||[])
+    .map(x=>({...x,...dreamCandidateStrength(x)}))
+    .filter(x=>!seed.includes(x.n))
+    .sort((a,b)=>b.support-a.support||b.count-a.count||b.linkHits-a.linkHits||b.diversity-a.diversity||a.n-b.n);
+
+  // 유지 개수는 4개로 고정하지 않습니다.
+  // 6개 유지에서 출발해, 새 후보가 현재 최약 seed보다 명확히 강할 때만 최대 3개까지 교체합니다.
+  let kept=seedRank.map(x=>({...x}));
+  const addon=[], removed=[];
+  const MAX_REPLACE=3;
+  const CLEAR_MARGIN=1.12; // 최소 12% 우세일 때만 교체
+
+  for(let i=0;i<MAX_REPLACE;i++){
+    kept.sort((a,b)=>a.support-b.support||a.n-b.n);
+    const weakest=kept[0];
+    const challenger=challengers.find(x=>!addon.includes(x.n));
+    if(!weakest||!challenger)break;
+
+    const clearlyStronger=
+      challenger.support>weakest.support &&
+      challenger.support>=weakest.support*CLEAR_MARGIN;
+
+    if(!clearlyStronger)break;
+
+    kept.shift();
+    removed.push(weakest.n);
+    addon.push(challenger.n);
+  }
+
+  const core=kept.map(x=>x.n);
+  let final=[...core,...addon];
+
+  // 안전 보정: 항상 6개를 유지하되 강제 다양화는 하지 않습니다.
+  seedRank.forEach(x=>{if(final.length<6&&!final.includes(x.n))final.push(x.n)});
+  challengers.forEach(x=>{if(final.length<6&&!final.includes(x.n))final.push(x.n)});
+  final=[...new Set(final)].slice(0,6).sort((a,b)=>a-b);
+
   return {
-    addon,
-    final: [...new Set(final)].slice(0,6).sort((a,b)=>a-b)
+    core:[...core].sort((a,b)=>a-b),
+    addon:[...addon].sort((a,b)=>a-b),
+    removed:[...removed].sort((a,b)=>a-b),
+    keepCount:core.length,
+    replaceCount:addon.length,
+    final,
+    seedStrength:seedRank,
+    candidateStrength:challengers,
+    revalidated:true
   };
 }
 
 function dreamChainBuild(base, rows){
-  const stages = [];
-  let seed = [...base];
+  const stages=[];
+  let seed=[...base];
 
-  for(let step=1; step<=3; step++){
-    const top = dreamChainCompanionFromSeed(seed, rows);
-    const made = dreamChainMakePreview(base, top);
+  for(let step=1;step<=3;step++){
+    // 이전 결과를 그대로 점수 승계하지 않고 매 단계 원데이터 rows에서 후보를 재집계합니다.
+    const top=dreamChainCompanionFromSeed(seed,rows);
+    const made=dreamChainMakePreview(seed,top,rows);
     stages.push({
       step,
       seed:[...seed].sort((a,b)=>a-b),
       top,
+      core:made.core,
       addon:made.addon,
+      removed:made.removed,
+      keepCount:made.keepCount,
+      replaceCount:made.replaceCount,
+      revalidated:true,
       final:made.final
     });
-    seed = made.final;
+    seed=made.final;
   }
 
   return stages;
@@ -1106,7 +1198,7 @@ function renderDreamChainLab(info){
   const stageHtml = info.chain.map((s,idx)=>{
     const prev = idx===0 ? info.base : info.chain[idx-1].final;
     const sim = dreamChainSimilarity(prev,s.final);
-    const added = new Set(s.final.filter(n=>!info.base.includes(n)));
+    const added = new Set(s.addon||s.final.filter(n=>!prev.includes(n)));
     const topText = s.top.length
       ? s.top.slice(0,5).map(x=>`${ball(x.n,true)} <b>${x.count}회</b> · ${x.pct}% · 연결 ${x.linked.join(', ')}`).join('<br>')
       : '후보 부족';
@@ -1114,6 +1206,7 @@ function renderDreamChainLab(info){
     return `<div class="chain-stage">
       <div class="chain-head"><b>${s.step}차 Chain Preview</b><span>${sim}% 일치</span></div>
       <div class="combo-selected">${s.final.map(n=>ball(n,true,added.has(n)?'selected-ball':'')).join('')}</div>
+      <p class="combo-guide"><b>원데이터 재검증 · 유지 ${s.keepCount??'-'}개 · 교체 ${s.replaceCount??0}개</b>${s.removed?.length?` · 제외 ${s.removed.join(', ')} · 추가 ${(s.addon||[]).join(', ')}`:''}</p>
       <p class="combo-guide">${topText}</p>
     </div>`;
   }).join('');
@@ -1146,45 +1239,102 @@ function renderDreamChainLab(info){
   </div>`;
 }
 
-function dreamCompanionPreview(keyword){
-  const base=dreamNumberMap(keyword);
+function dreamBuildPreviewFromBase(keyword,base,originalBase=null){
+  base=[...new Set((base||[]).map(Number).filter(n=>n>=1&&n<=45))].slice(0,6).sort((a,b)=>a-b);
+  if(base.length!==6)throw new Error('수정된 꿈번호는 서로 다른 6개 번호여야 합니다.');
   const rows=sourceRows();
-  const counts={};
-  for(let i=1;i<=45;i++)counts[i]={n:i,count:0,bases:{}};
-  rows.forEach(row=>{
-    const pool=[...new Set(rowPool(row).filter(Boolean))];
-    const baseHits=base.filter(n=>pool.includes(n));
-    if(!baseHits.length)return;
-    pool.forEach(n=>{
-      if(base.includes(n))return;
-      counts[n].count++;
-      baseHits.forEach(b=>counts[n].bases[b]=(counts[n].bases[b]||0)+1);
-    });
-  });
-  const top=Object.values(counts)
-    .filter(x=>x.count>0&&!base.includes(x.n))
-    .map(x=>({
-      ...x,
-      pct: rows.length?Number(((x.count/rows.length)*100).toFixed(1)):0,
-      linked:Object.entries(x.bases).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([n])=>Number(n)),
-      trend:dreamTrendFor(base,x.n)
-    }))
-    .sort((a,b)=>b.count-a.count||a.n-b.n)
-    .slice(0,8);
-  const addon=top.slice(0,2).map(x=>x.n);
-  let final=[...base.slice(0,4),...addon];
-  [...base,...top.map(x=>x.n)].forEach(n=>{if(final.length<6&&!final.includes(n))final.push(n)});
-  final=[...new Set(final)].slice(0,6).sort((a,b)=>a-b);
+  const top=dreamChainCompanionFromSeed(base,rows).map(x=>({...x,trend:dreamTrendFor(base,x.n)}));
+  const made=dreamChainMakePreview(base,top,rows);
+  const chain=dreamChainBuild(base,rows);
+  return {
+    keyword,
+    originalBase:[...(originalBase||base)].sort((a,b)=>a-b),
+    base,
+    modifiedBase:base,
+    top,
+    core:made.core,
+    addon:made.addon,
+    removed:made.removed,
+    keepCount:made.keepCount,
+    replaceCount:made.replaceCount,
+    final:made.final,
+    chain,
+    range:matchRange==='all'?'전체':`최근 ${matchRange}회`,
+    rows:rows.length
+  };
+}
 
-  const chain = dreamChainBuild(base, rows);
+function dreamCompanionPreview(keyword,baseOverride=null){
+  const originalBase=dreamNumberMap(keyword);
+  const base=baseOverride?baseOverride:originalBase;
+  return dreamBuildPreviewFromBase(keyword,base,originalBase);
+}
+function dreamParseEditNumbers(raw){
+  return [...new Set(String(raw||'').trim().split(/[\s,]+/)
+    .map(Number).filter(n=>Number.isInteger(n)&&n>=1&&n<=45))];
+}
 
-  return {keyword,base,top,addon,final,chain,range:matchRange==='all'?'전체':`최근 ${matchRange}회`,rows:rows.length};
+function dreamApplyUserEdit(originalBase,removeNums,addNums){
+  const base=[...new Set((originalBase||[]).map(Number))].sort((a,b)=>a-b);
+  const remove=[...new Set(removeNums||[])];
+  const add=[...new Set(addNums||[])];
+
+  if(remove.length<1||remove.length>3)throw new Error('제외번호는 최소 1개, 최대 3개를 선택하세요.');
+  if(add.length!==remove.length)throw new Error('제외번호와 추가번호의 개수를 같게 입력하세요.');
+  if(remove.some(n=>!base.includes(n)))throw new Error('제외번호는 기본 꿈번호 6개 안에서 선택해야 합니다.');
+  if(add.some(n=>base.includes(n)))throw new Error('추가번호는 기본 꿈번호와 다른 번호를 입력하세요.');
+
+  const modified=base.filter(n=>!remove.includes(n)).concat(add);
+  const unique=[...new Set(modified)].sort((a,b)=>a-b);
+  if(unique.length!==6)throw new Error('수정 후에는 서로 다른 6개 번호가 되어야 합니다.');
+  return unique;
+}
+
+function renderDreamBaseEditor(keyword){
+  const box=document.getElementById('dreamPreviewResult');
+  if(!box)return;
+  const base=dreamNumberMap(keyword);
+  lastDreamPreviewInfo={keyword,originalBase:base,base,modifiedBase:base,top:[],addon:[],final:base,chain:[],range:'수정 전',rows:0};
+
+  box.innerHTML=`<div style="border-top:1px solid #d9ead3;margin-top:12px;padding-top:12px">
+    <b>🌙 기본 꿈번호</b>
+    <p class="combo-guide">먼저 기본 꿈번호 6개를 확인한 뒤, 최소 1개~최대 3개를 교체하세요. 수정된 6개 번호가 Dream Preview와 Chain의 최초 seed가 됩니다.</p>
+    <div class="combo-selected">${base.map(n=>ball(n,true)).join('')}</div>
+
+    <div style="margin-top:14px;padding:12px;background:#f8fbff;border:1px solid #dbe7f5;border-radius:14px">
+      <b>✏️ 꿈번호 1~3개 수정</b>
+      <p class="combo-guide">제외할 기본 꿈번호와 새로 넣을 번호를 같은 개수로 입력하세요.</p>
+      <label class="combo-guide"><b>제외번호</b></label>
+      <input id="dreamRemoveNums" class="combo-input" inputmode="numeric" placeholder="예: 30 44">
+      <label class="combo-guide"><b>추가번호</b></label>
+      <input id="dreamAddNums" class="combo-input" inputmode="numeric" placeholder="예: 27 31">
+      <button id="dreamRunEditedPreviewBtn" class="combo-btn" type="button">수정 꿈번호로 Preview 실행</button>
+      <div id="dreamEditStatus"></div>
+    </div>
+  </div>`;
+
+  const runBtn=document.getElementById('dreamRunEditedPreviewBtn');
+  if(runBtn)runBtn.onclick=()=>{
+    const status=document.getElementById('dreamEditStatus');
+    try{
+      const remove=dreamParseEditNumbers(document.getElementById('dreamRemoveNums')?.value||'');
+      const add=dreamParseEditNumbers(document.getElementById('dreamAddNums')?.value||'');
+      const modified=dreamApplyUserEdit(base,remove,add);
+      const info=dreamBuildPreviewFromBase(keyword,modified,base);
+      renderDreamPreviewResult(info);
+    }catch(e){
+      if(status)status.innerHTML=`<p class="combo-guide" style="color:#b42318"><b>${e.message||e}</b></p>`;
+    }
+  };
 }
 
 function renderDreamPreviewResult(info){
   const box=document.getElementById('dreamPreviewResult');
   if(!box||!info)return;
   lastDreamPreviewInfo=info;
+  const original=info.originalBase||info.base||[];
+  const modified=info.modifiedBase||info.base||[];
+  const edited=original.join(',')!==modified.join(',');
   const topText=info.top.length?info.top.slice(0,5).map(x=>`${ball(x.n,true)} <b>${x.count}회</b> · ${x.pct}% · 연결 ${x.linked.join(', ')}`).join('<br>'):'동반 보정 후보가 부족합니다.';
   const trendText=info.top.length?info.top.slice(0,5).map(x=>{
     const t=x.trend;
@@ -1195,9 +1345,17 @@ function renderDreamPreviewResult(info){
 
   box.innerHTML=`<div style="border-top:1px solid #d9ead3;margin-top:12px;padding-top:12px">
     <b>🌙 꿈해몽 AI Preview 결과</b>
-    <p class="combo-guide">기본 꿈번호를 먼저 만들고, ${info.range} 데이터에서 1단계 동반번호를 보정했습니다. 분석번호 입력칸은 자동 변경하지 않습니다.</p>
-    <div class="combo-guide"><b>기본 꿈번호</b></div>
-    <div class="combo-selected">${info.base.map(n=>ball(n,true)).join('')}</div>
+    <p class="combo-guide">사용자가 수정한 꿈번호 6개를 기준 seed로 확정한 뒤, ${info.range} 원데이터에서 동반후보와 유지 강도를 다시 계산했습니다.</p>
+
+    <div class="combo-guide"><b>수정 전 기본 꿈번호</b></div>
+    <div class="combo-selected">${original.map(n=>ball(n,true)).join('')}</div>
+
+    <div class="combo-guide" style="margin-top:8px"><b>${edited?'수정된 꿈번호 · Chain 시작 seed':'꿈번호 · Chain 시작 seed'}</b></div>
+    <div class="combo-selected">${modified.map(n=>ball(n,true,'selected-ball')).join('')}</div>
+
+    <div class="combo-guide" style="margin-top:8px"><b>1차 유지 핵심번호 (${info.keepCount??'-'}개 유지 · ${info.replaceCount??0}개 교체)</b></div>
+    <div class="combo-selected">${(info.core||modified).map(n=>ball(n,true,'selected-ball')).join('')}</div>
+
     <div class="combo-guide" style="margin-top:8px"><b>동반 보정 후보 TOP</b></div>
     <p class="combo-guide">${topText}</p>
     <div class="combo-guide" style="margin-top:8px"><b>Companion Trend 간단 분석</b></div>
@@ -1208,17 +1366,17 @@ function renderDreamPreviewResult(info){
     ${chainHtml}
 
     <div class="combo-btn-row" style="margin-top:10px"><button id="applyDreamPreviewBtn">Preview 번호 적용</button><button id="applyDreamAiJudgeBtn">AI 판단 번호 적용</button></div>
-    <div class="combo-btn-row" style="margin-top:10px"><button id="myNumberFilterBtn">내 번호 필터</button></div>
+    <div class="combo-btn-row" style="margin-top:10px"><button id="dreamEditAgainBtn">꿈번호 다시 수정</button><button id="myNumberFilterBtn">내 번호 필터</button></div>
     <div id="myNumberFilterResult"></div>
-    <p class="combo-guide">※ Preview와 Chain은 실험 기능입니다. 꿈의 원래 의미를 유지하기 위해 기본 꿈번호 4개 이상을 우선 보존합니다.</p>
+    <p class="combo-guide">※ 유지 개수는 4개로 고정하지 않습니다. 각 Chain 단계마다 현재 seed를 원 회차 데이터에서 다시 검증하고, 새 후보가 현재 최약 번호보다 명확하게 강할 때만 최대 3개까지 교체합니다. 강한 번호가 계속 유지되면 단계별 조합이 같거나 매우 비슷할 수 있습니다.</p>
   </div>`;
 
   const applyBtn=document.getElementById('applyDreamPreviewBtn');
   if(applyBtn)applyBtn.onclick=()=>applyDreamPreviewNumbers(info.final);
-
   const judgeBtn=document.getElementById('applyDreamAiJudgeBtn');
   if(judgeBtn)judgeBtn.onclick=()=>applyDreamPreviewNumbers(judge.pick);
-
+  const editAgain=document.getElementById('dreamEditAgainBtn');
+  if(editAgain)editAgain.onclick=()=>renderDreamBaseEditor(info.keyword);
   const filterBtn=document.getElementById('myNumberFilterBtn');
   if(filterBtn)filterBtn.onclick=()=>renderMyNumberFilter(info);
 }
