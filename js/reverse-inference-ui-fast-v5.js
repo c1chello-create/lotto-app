@@ -1,0 +1,83 @@
+(function(global){
+  'use strict';
+  if(global.__reverseInferenceUI)return;global.__reverseInferenceUI=true;
+  const ballHtml=n=>typeof global.ball==='function'?global.ball(n,true):`<span class="reverse-ball">${n}</span>`;
+  const fmtContrib=item=>{
+    const c=item?.virtual?.contributions||{};
+    return `<div class="reverse-contrib"><span>Classic <b>${c.classic??'-'}</b></span><span>Pattern <b>${c.pattern??'-'}</b></span><span>동반빈도 <b>${c.frequency??'-'}</b></span><span>유지율 <b>${c.preservation??'-'}</b></span></div>`;
+  };
+  function style(){
+    if(document.getElementById('reverseInferenceStyle'))return;
+    const st=document.createElement('style');st.id='reverseInferenceStyle';st.textContent=`
+      .reverse-card{margin-top:14px;padding:16px;border:1px solid #cfe1ff;border-radius:18px;background:linear-gradient(180deg,#f8fbff,#fff)}
+      .reverse-head{display:flex;justify-content:space-between;gap:8px;align-items:center}.reverse-head b{font-size:17px;color:#11366b}.reverse-head span{font-size:11px;font-weight:900;color:#1769aa;background:#eaf4ff;padding:5px 8px;border-radius:999px}
+      .reverse-controls{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}.reverse-controls label{font-size:12px;color:#667085;font-weight:800}.reverse-controls select{width:100%;margin-top:4px;padding:9px;border:1px solid #d0d5dd;border-radius:10px;background:white;font-weight:800}.reverse-virtual-mode{margin:10px 0;padding:10px;border:1px solid #dbe7f5;border-radius:12px;background:#fff}.reverse-mode-row{display:flex;gap:7px}.reverse-mode-row button{flex:1;border:1px solid #cfd8e6;background:#fff;border-radius:10px;padding:9px;font-weight:800;color:#475467}.reverse-mode-row button.active{background:#11366b;color:#fff;border-color:#11366b}.reverse-virtual-input{width:100%;box-sizing:border-box;margin-top:8px;padding:10px;border:1px solid #d0d5dd;border-radius:10px;font-size:16px}
+      .reverse-progress{padding:12px;border-radius:12px;background:#f4f7fb;color:#475467;font-size:13px;margin-top:10px}.reverse-progress.error{color:#b42318;background:#fff1f0}
+      .reverse-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:10px 0}.reverse-summary div{padding:10px 6px;text-align:center;border-radius:12px;background:#f2f7ff}.reverse-summary b{display:block;font-size:18px;color:#11366b}.reverse-summary span{font-size:10px;color:#667085}
+      .reverse-best{padding:12px;border:1px solid #b8d5ff;border-radius:14px;background:white}.reverse-best.success{border-color:#8bd0a0;background:#f4fff7}.reverse-balls{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.reverse-change{font-size:12px;color:#475467;margin:7px 0}.reverse-change b{color:#11366b}
+      .reverse-contrib{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}.reverse-contrib span{padding:7px;border-radius:9px;background:#f7f9fc;font-size:11px}.reverse-contrib b{float:right;color:#11366b}
+      .reverse-stage{display:grid;gap:5px;margin:10px 0}.reverse-stage div{display:flex;justify-content:space-between;font-size:12px;padding:7px 9px;background:#f8fafc;border-radius:9px}.reverse-inferred{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.reverse-inferred span{font-size:11px;background:#fff7df;border:1px solid #f0d48a;border-radius:999px;padding:5px 8px;color:#7a5200;font-weight:800}
+      .reverse-top details{margin-top:10px}.reverse-top section{padding:9px 0;border-top:1px solid #eef2f7}.reverse-top section:first-child{border-top:0}.reverse-top small{color:#667085}
+      .reverse-precise{margin-top:14px;padding-top:14px;border-top:1px solid #d9e5f6}.reverse-precise-head{display:flex;justify-content:space-between;gap:8px;align-items:center}.reverse-precise-head b{font-size:16px;color:#7a5200}.reverse-precise-head span{font-size:10px;font-weight:900;color:#7a5200;background:#fff4cf;padding:5px 8px;border-radius:999px}.reverse-precise .combo-btn{margin-top:8px}.reverse-precise-result .reverse-best{margin-top:10px}.reverse-precise-badge{display:inline-block;margin-top:7px;padding:5px 8px;border-radius:999px;background:#fff7df;border:1px solid #f0d48a;color:#7a5200;font-size:11px;font-weight:900}
+      @media(max-width:420px){.reverse-summary{grid-template-columns:1fr 1fr}.reverse-contrib{grid-template-columns:1fr 1fr}}
+    `;document.head.appendChild(st);
+  }
+  function shell(){
+    return `<section class="reverse-card" id="reverseInferenceCard"><div class="reverse-head"><b>🔄 +1회 가상출현 역산</b><span>Fusion AI</span></div><p class="combo-guide">후보 조합이 다음 회차에 1회 출현했다고 가정해 모든 연결 점수를 다시 계산하고 목표점수에 가장 적은 교체로 도달하는 조합을 찾습니다.</p><div class="reverse-controls"><label>목표 Fusion<select id="reverseTarget"><option>80</option><option>85</option><option selected>90</option><option>95</option></select></label><label>최대 교체<select id="reverseMax"><option>1</option><option selected>2</option><option>3</option></select></label></div><div class="reverse-virtual-mode"><div class="reverse-mode-row"><button type="button" id="reverseModeSelf" class="active">후보 자체 +1회</button><button type="button" id="reverseModeDesignated">직접지정 6개 +1회</button></div><input id="reverseVirtualNums" class="reverse-virtual-input" type="text" inputmode="text" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="예: 3 11 22 27 34 41" style="display:none"><p id="reverseVirtualGuide" class="combo-guide" style="margin:7px 0 0">각 후보 조합 자체가 다음 회차에 출현했다고 가정합니다.</p></div><p class="combo-guide"><b>Fast Gate 80점 · +1 Fast v5</b> · 최고 가능점수가 80점 미만인 후보는 Pattern 정밀계산 전에 제외합니다. Fusion 계산식은 변경하지 않습니다.</p><button type="button" class="combo-btn" id="reverseRun">+1회 빠른 역산 실행</button><div id="reverseResult"><p class="combo-guide">실제 lotto.json은 변경하지 않습니다.</p></div><div class="reverse-precise"><div class="reverse-precise-head"><b>🎯 목표점수 정밀 역산</b><span>25개 완전탐색 · Fast v5</span></div><p class="combo-guide">확정된 25개 후보풀 안에서 선택한 최대 교체 수까지 모든 조합을 검사합니다. 목표점수에 도달하면 해당 조합을 모두 집계하고, 도달 조합이 없으면 실제 최고점 TOP10을 확정합니다.</p><div class="reverse-controls"><label>도달 목표<select id="reversePreciseTarget"><option>85</option><option>90</option><option selected>95</option><option>98</option></select></label><label>정밀 최대 교체<select id="reversePreciseMax"><option>1</option><option>2</option><option selected>3</option></select></label></div><button type="button" class="combo-btn" id="reversePreciseRun">🎯 목표점수 정밀 역산</button><div id="reversePreciseResult"><p class="combo-guide">25개 후보풀을 확정한 뒤 실행하세요. 목표 95점·최대 교체 3개일 때 22,059개 조합을 검사합니다.</p></div></div></section>`;
+  }
+  function attach(){
+    style();if(document.getElementById('reverseInferenceCard'))return;
+    const anchor=document.getElementById('scoreOptimizerCard')||document.querySelector('.ai-ranking-shell');
+    if(anchor){anchor.insertAdjacentHTML('afterend',shell());}
+  }
+  function progress(t,error=false){const el=document.getElementById('reverseResult');if(el)el.innerHTML=`<div class="reverse-progress ${error?'error':''}">${t}</div>`;}
+  function render(r){
+    const el=document.getElementById('reverseResult');if(!el)return;
+    if(r.error){progress(r.error,true);return;}
+    const b=r.best;
+    const stages=r.stages.map(s=>`<div><span>${s.replaceCount}개 교체 · 검사 ${s.count} · 생존 ${s.kept} · 제외 ${s.pruned}${s.numberCount?` · 번호군 ${s.numberCount}`:''}</span><b>${s.best?`${s.best.after}점 · 목표달성 ${s.met}개`:'후보 없음'}</b></div>`).join('');
+    const inferred=r.inferred.map(x=>`<span>${x.n}번 · ${x.count}회 · 최고 ${x.bestScore}</span>`).join('');
+    const sl=r.shortlist?.active||r.shortlist?.stage1||null;
+    const shortlist=sl&&sl.nums?.length?`<div class="reverse-progress" style="margin-top:10px"><b>🎯 압축 번호군 ${sl.nums.length}개</b><br>핵심 ${(sl.core||[]).join(' · ')||'-'}${(sl.support||[]).length?`<br>보조 ${(sl.support||[]).join(' · ')}`:''}</div>`:'';
+    const top=r.top.map((x,i)=>`<section><b>${i+1}위 · ${x.after}점 (${x.delta>=0?'+':''}${x.delta})</b><div class="reverse-balls">${x.nums.map(ballHtml).join('')}</div><small>교체 ${x.replaceCount}개 · 제외 ${x.removed.join(', ')||'-'} · 추가 ${x.added.join(', ')||'-'} · 실제점수 ${x.before}</small></section>`).join('');
+    el.innerHTML=`<div class="reverse-summary"><div><b>${r.baseline?.total??'-'}</b><span>현재 Fusion</span></div><div><b>${r.sameVirtual?.total??'-'}</b><span>${r.virtualMode==='designated'?'직접지정 +1회 적용':'현재 조합 +1회'}</span></div><div><b>${r.target}</b><span>목표 Fusion</span></div></div><div class="reverse-stage">${stages}</div>${b?`<div class="reverse-best ${r.reached?'success':''}"><b>${r.reached?'✅ 목표 도달 최적해':'🔎 최고 역산 결과'} · ${b.after}점</b><div class="reverse-balls">${b.nums.map(ballHtml).join('')}</div><div class="reverse-change">실제 <b>${b.before}</b> → 가상 +1회 <b>${b.after}</b> (${b.delta>=0?'+':''}${b.delta}) · 교체 ${b.replaceCount}개<br>제외 ${b.removed.join(', ')||'-'} · 추가 ${b.added.join(', ')||'-'}</div>${fmtContrib(b)}<button type="button" class="combo-btn" data-reverse-apply="${b.nums.join(',')}">이 조합 적용</button></div>`:''}<div class="reverse-progress" style="margin-top:10px">Fast Gate ${r.cutoff}점 · 전체 검사 ${r.totals?.evaluated||0} · 정밀계산 ${r.totals?.kept||0} · 조기제외 ${r.totals?.pruned||0}</div>${shortlist}<div style="margin-top:12px"><b>역산 핵심 추가번호</b><div class="reverse-inferred">${inferred||'없음'}</div></div><div class="reverse-top"><details><summary>역산 TOP ${r.top.length} 보기</summary>${top}</details></div><p class="combo-guide">※ ${r.note} 이 점수는 가상 시나리오 분석이며 당첨 확률을 의미하지 않습니다.</p>`;
+  }
+  let virtualMode='self';
+  function parseVirtualNums(){const raw=document.getElementById('reverseVirtualNums')?.value||'';return [...new Set(raw.split(/[\s,]+/).map(Number).filter(n=>Number.isInteger(n)&&n>=1&&n<=45))].sort((a,b)=>a-b);}
+  function setVirtualMode(mode){virtualMode=mode==='designated'?'designated':'self';document.getElementById('reverseModeSelf')?.classList.toggle('active',virtualMode==='self');document.getElementById('reverseModeDesignated')?.classList.toggle('active',virtualMode==='designated');const inp=document.getElementById('reverseVirtualNums');if(inp)inp.style.display=virtualMode==='designated'?'block':'none';const g=document.getElementById('reverseVirtualGuide');if(g)g.textContent=virtualMode==='designated'?'입력한 6개 번호를 다음 회차 당첨번호로 고정하고 모든 후보를 재평가합니다.':'각 후보 조합 자체가 다음 회차에 출현했다고 가정합니다.';}
+  async function run(){
+    const btn=document.getElementById('reverseRun');if(!btn)return;
+    btn.disabled=true;btn.textContent='역산 중...';
+    try{const virtualNums=virtualMode==='designated'?parseVirtualNums():[];if(virtualMode==='designated'&&virtualNums.length!==6){progress('직접지정 모드는 서로 다른 1~45 번호 6개를 입력해야 합니다.',true);return;}const r=await global.ReverseInferenceEngine.run({virtualNums,target:Number(document.getElementById('reverseTarget')?.value||90),maxReplace:Number(document.getElementById('reverseMax')?.value||2),cutoff:80,onProgress:t=>progress(t)});render(r);}finally{btn.disabled=false;btn.textContent='+1회 빠른 역산 실행';}
+  }
+
+  function preciseProgress(t,error=false){const el=document.getElementById('reversePreciseResult');if(el)el.innerHTML=`<div class="reverse-progress ${error?'error':''}">${t}</div>`;}
+  function renderPrecise(r){
+    const el=document.getElementById('reversePreciseResult');if(!el)return;
+    if(r.error){preciseProgress(r.error,true);return;}
+    const b=r.best;
+    const stages=(r.stages||[]).map(s=>`<div><span>${s.replaceCount}개 교체 · 완전검사 ${Number(s.count||0).toLocaleString()} · 목표가능 ${Number(s.kept||0).toLocaleString()} · 제외 ${Number(s.pruned||0).toLocaleString()}</span><b>${s.met?`목표달성 ${s.met}개`:`최고 ${s.best?.after??'-'}점`}</b></div>`).join('');
+    const top=(r.top||[]).map((x,i)=>`<section><b>${i+1}위 · ${x.after}점 (${x.delta>=0?'+':''}${x.delta})</b><div class="reverse-balls">${x.nums.map(ballHtml).join('')}</div><small>교체 ${x.replaceCount}개 · 제외 ${x.removed.join(', ')||'-'} · 추가 ${x.added.join(', ')||'-'} · 실제점수 ${x.before}</small></section>`).join('');
+    const title=r.reached?`✅ 목표 ${r.target}점 이상 ${r.targetMatchCount}개 발견`:`❌ 목표 ${r.target}점 이상 조합 없음`;
+    const bestText=b?`${r.reached?'최고':'완전탐색 최고'} ${b.after}점`:'유효 후보 없음';
+    el.innerHTML=`<div class="reverse-summary"><div><b>${r.baseline?.total??'-'}</b><span>현재 Fusion</span></div><div><b>${r.sameVirtual?.total??'-'}</b><span>현재 조합 +1회</span></div><div><b>${r.target}</b><span>도달 목표</span></div></div><span class="reverse-precise-badge">25개 후보풀 · ${Number(r.totals?.evaluated||0).toLocaleString()}개 완전검사</span><div class="reverse-stage">${stages}</div>${b?`<div class="reverse-best ${r.reached?'success':''}"><b>${title} · ${bestText}</b><div class="reverse-balls">${b.nums.map(ballHtml).join('')}</div><div class="reverse-change">실제 <b>${b.before}</b> → 가상 +1회 <b>${b.after}</b> (${b.delta>=0?'+':''}${b.delta}) · 교체 ${b.replaceCount}개<br>제외 ${b.removed.join(', ')||'-'} · 추가 ${b.added.join(', ')||'-'}</div>${fmtContrib(b)}<button type="button" class="combo-btn" data-reverse-apply="${b.nums.join(',')}">이 조합 적용</button></div>`:`<div class="reverse-progress error">유효한 조합을 계산하지 못했습니다.</div>`}<div class="reverse-progress">목표 Gate 통과 ${Number(r.totals?.kept||0).toLocaleString()} · 목표 Gate 제외 ${Number(r.totals?.pruned||0).toLocaleString()}${r.totals?.exactBounds!=null?` · 정확상한 ${Number(r.totals.exactBounds||0).toLocaleString()}`:''}${r.totals?.patternEvaluated!=null?` · Pattern 정밀 ${Number(r.totals.patternEvaluated||0).toLocaleString()}`:''}${r.totals?.fallbackRefined?` · TOP 재검산 ${Number(r.totals.fallbackRefined).toLocaleString()}`:''}${r.performance?`<br><b>소요 ${r.performance.elapsedSec}초 · 초당 ${Number(r.performance.perSecond||0).toLocaleString()}조합</b>`:''}</div><div class="reverse-top"><details><summary>${r.reached?`목표 도달 TOP ${r.top.length}`:`정밀 역산 TOP ${r.top.length}`} 보기</summary>${top}</details></div><p class="combo-guide">※ ${r.note} 이 점수는 가상 시나리오 분석이며 당첨 확률을 의미하지 않습니다.</p>`;
+  }
+  async function runPrecise(){
+    const btn=document.getElementById('reversePreciseRun');if(!btn)return;
+    if(typeof global.ReverseInferenceEngine?.runPrecise!=='function'){preciseProgress('정밀 역산 엔진이 연결되지 않았습니다.',true);return;}
+    btn.disabled=true;btn.textContent='정밀 역산 중...';
+    try{
+      const r=await global.ReverseInferenceEngine.runPrecise({target:Number(document.getElementById('reversePreciseTarget')?.value||95),maxReplace:Number(document.getElementById('reversePreciseMax')?.value||3),onProgress:t=>preciseProgress(t)});
+      renderPrecise(r);
+    }finally{btn.disabled=false;btn.textContent='🎯 목표점수 정밀 역산';}
+  }
+  document.addEventListener('click',e=>{
+    if(e.target.closest('#reverseModeSelf')){setVirtualMode('self');return;}
+    if(e.target.closest('#reverseModeDesignated')){setVirtualMode('designated');setTimeout(()=>document.getElementById('reverseVirtualNums')?.focus(),0);return;}
+    if(e.target.closest('#reverseRun'))run();
+    if(e.target.closest('#reversePreciseRun'))runPrecise();
+    const a=e.target.closest('[data-reverse-apply]');if(a){const nums=a.getAttribute('data-reverse-apply').split(',').map(Number);const input=document.getElementById('comboInput');if(input)input.value=nums.join(' ');document.getElementById('analyzeBtn')?.click();window.scrollTo({top:0,behavior:'smooth'});}
+  });
+  const mo=new MutationObserver(attach);mo.observe(document.documentElement,{childList:true,subtree:true});
+  document.addEventListener('DOMContentLoaded',attach);setTimeout(attach,500);
+})(window);
