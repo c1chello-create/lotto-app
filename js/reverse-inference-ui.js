@@ -72,6 +72,8 @@
     }finally{btn.disabled=false;btn.textContent='🎯 목표점수 정밀 역산';}
   }
   document.addEventListener('click',e=>{
+    if(e.target.closest('#reverseModeSelf')){setVirtualMode('self');return;}
+    if(e.target.closest('#reverseModeDesignated')){setVirtualMode('designated');setTimeout(()=>document.getElementById('reverseVirtualNums')?.focus(),0);return;}
     if(e.target.closest('#reverseRun'))run();
     if(e.target.closest('#reversePreciseRun'))runPrecise();
     const a=e.target.closest('[data-reverse-apply]');if(a){const nums=a.getAttribute('data-reverse-apply').split(',').map(Number);const input=document.getElementById('comboInput');if(input)input.value=nums.join(' ');document.getElementById('analyzeBtn')?.click();window.scrollTo({top:0,behavior:'smooth'});}
