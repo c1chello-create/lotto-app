@@ -171,7 +171,10 @@
     const ctx=__preciseSession?.patternContext;
     if(!eng||!ctx||typeof eng.scorePatternComboV3Virtual!=='function')return patternMetrics(nums);
     try{
-      const p=eng.scorePatternComboV3Virtual(clean(nums),ctx);
+      const draw=clean(__preciseSession?.virtualDraw||nums);
+      const p=(typeof eng.scorePatternComboV3VirtualWithDraw==='function')
+        ?eng.scorePatternComboV3VirtualWithDraw(clean(nums),draw,ctx)
+        :eng.scorePatternComboV3Virtual(clean(nums),ctx);
       if(!p)return null;
       return {
         strength:Number(p.strength??p.score??0),
@@ -250,7 +253,7 @@
   // 매 후보마다 makeRankedCombos 전체를 다시 생성하던 병목을 제거하면서,
   // 후보 자체의 가상 +1회 효과는 그대로 다시 계산합니다.
   let __preciseSession=null;
-  function beginPreciseSession(baseNums){
+  function beginPreciseSession(baseNums,opts={}){
     const base=clean(baseNums);
     if(base.length!==6)return null;
     const candidates=existingCandidates();
@@ -272,7 +275,7 @@
       baseKey:key(base),candidates:rawRefs,
       minRaw:raws.length?Math.min(...raws):0,
       maxRaw:raws.length?Math.max(...raws):0,
-      known,patternContext
+      known,patternContext,virtualDraw:clean(opts.virtualDraw||[])
     };
     return {baseKey:__preciseSession.baseKey,referenceCount:rawRefs.length,minRaw:__preciseSession.minRaw,maxRaw:__preciseSession.maxRaw};
   }

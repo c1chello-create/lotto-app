@@ -71,6 +71,7 @@
     return result;
   }
   let __fastRegularSession=false;
+  let __fixedVirtualDraw=null;
   function evaluateVirtualGate(base,nums,cutoff,cache){
     const k=cache?`${cacheKey(cache,nums)}|C${cutoff}`:null;
     if(cache&&cache.gate.has(k))return cache.gate.get(k);
@@ -86,7 +87,7 @@
       if(!fast||Number(fast.upperBound)<cutoffNum-0.5){
         result={...(fast||{}),nums:clean(nums),pruned:true,cutoff:cutoffNum,upperBound:Number(fast?.upperBound)||0,fastPruned:true};
       }else{
-        const bound=withVirtualDrawLite(nums,()=>sf.evaluateCandidateBound(base,nums));
+        const bound=__fixedVirtualDraw?sf.evaluateCandidateBound(base,nums):withVirtualDrawLite(nums,()=>sf.evaluateCandidateBound(base,nums));
         if(!bound||Number(bound.upperBound)<cutoffNum-0.5){
           result=bound?{...bound,pruned:true,cutoff:cutoffNum}:null;
         }else{
@@ -107,7 +108,7 @@
   function evaluateVirtualFull(base,nums,cache){
     const k=cache?cacheKey(cache,nums):null;
     if(cache&&cache.virtual.has(k))return cache.virtual.get(k);
-    const result=withVirtualDraw(nums,()=>global.ScoreFusionEngine?.evaluateCandidate?.(base,nums)||null);
+    const result=__fixedVirtualDraw?global.ScoreFusionEngine?.evaluateCandidate?.(base,nums)||null:withVirtualDraw(nums,()=>global.ScoreFusionEngine?.evaluateCandidate?.(base,nums)||null);
     if(cache)cache.virtual.set(k,result);
     return result;
   }
@@ -287,12 +288,15 @@
     const target=Math.max(60,Math.min(98,Number(opts.target)||95));
     const maxReplace=Math.max(1,Math.min(6,Number(opts.maxReplace)||6));
     const onProgress=typeof opts.onProgress==='function'?opts.onProgress:()=>{};
+    const requestedVirtual=clean(opts.virtualNums||[]);
+    const designatedMode=requestedVirtual.length===6;
+    if(requestedVirtual.length&&requestedVirtual.length!==6)return {error:'직접지정 가상출현 번호는 서로 다른 6개 번호가 필요합니다.'};
     const cache=createRunCache(base,target);
     const addPool=pool.filter(n=>!base.includes(n));
     const startedAt=(global.performance&&typeof global.performance.now==='function')?global.performance.now():Date.now();
     const yieldEvery=Math.max(600,Math.min(4000,Number(opts.yieldEvery)||1200));
     state.running=true;
-    let sessionStarted=false;
+    let sessionStarted=false,fixedRow=null;
     try{
       onProgress(`25개 후보풀 전체 정밀 역산 준비 · 목표 ${target}점 · Fast v5`);
       // 사용자가 보던 현재점수/현재조합+1회 값은 기존 방식으로 1회만 계산합니다.
@@ -350,7 +354,7 @@
             if(!fast||rec.fastUpperBound<target-0.5){
               st.pruned++;st.fastPruned++;targetPruned++;
             }else{
-              const bound=withVirtualDrawLite(nums,()=>sf.evaluateCandidateBound(base,nums));
+              const bound=__fixedVirtualDraw?sf.evaluateCandidateBound(base,nums):withVirtualDrawLite(nums,()=>sf.evaluateCandidateBound(base,nums));
               rec.bound=bound;exactBoundCount++;st.exactBound++;
               if(!bound||Number(bound.upperBound)<target-0.5){
                 st.pruned++;targetPruned++;
@@ -481,20 +485,29 @@
     const cutoff=Math.max(60,Math.min(target,Number(opts.cutoff)||80));
     const maxReplace=Math.max(1,Math.min(3,Number(opts.maxReplace)||2));
     const onProgress=typeof opts.onProgress==='function'?opts.onProgress:()=>{};
+    const requestedVirtual=clean(opts.virtualNums||[]);
+    const designatedMode=requestedVirtual.length===6;
+    if(requestedVirtual.length&&requestedVirtual.length!==6)return {error:'직접지정 가상출현 번호는 서로 다른 6개 번호가 필요합니다.'};
     const cache=createRunCache(base,cutoff);
     const sf=global.ScoreFusionEngine;
     const fastReady=!!(sf?.beginPreciseSession&&sf?.endPreciseSession&&sf?.estimateVirtualUpperBoundFast&&sf?.evaluateCandidateBound&&sf?.completeCandidateFromBound);
     const startedAt=(global.performance&&typeof global.performance.now==='function')?global.performance.now():Date.now();
     state.running=true;
-    let sessionStarted=false;
+    let sessionStarted=false,fixedRow=null;
     try{
       onProgress('현재 Fusion AI Score를 계산하고 있습니다...');
       // 현재점수와 현재조합 +1회 점수는 기존 전체 계산으로 1회만 산출합니다.
       const baseline=evaluateReal(base,base,cache);
-      const sameVirtual=evaluateVirtualFull(base,base,cache);
+      let sameVirtual;
+      if(designatedMode){
+        const all=rows();fixedRow=virtualRow(requestedVirtual);all.unshift(fixedRow);invalidate();__fixedVirtualDraw=requestedVirtual.slice();
+        sameVirtual=global.ScoreFusionEngine?.evaluateCandidate?.(base,base)||null;
+      }else{
+        sameVirtual=evaluateVirtualFull(base,base,cache);
+      }
 
       if(fastReady){
-        sf.beginPreciseSession(base);
+        sf.beginPreciseSession(base,{virtualDraw:designatedMode?requestedVirtual:[]});
         sessionStarted=true;
         __fastRegularSession=true;
       }
@@ -540,7 +553,7 @@
       const inferenceSource=(met.length?met:pool).slice(0,80);
       const totals=stages.reduce((a,s)=>({evaluated:a.evaluated+s.count,kept:a.kept+s.kept,pruned:a.pruned+s.pruned}),{evaluated:0,kept:0,pruned:0});
       const result={
-        base,target,cutoff,maxReplace,baseline,sameVirtual,best,top,stages,
+        base,target,cutoff,maxReplace,baseline,sameVirtual,best,top,stages,virtualMode:designatedMode?'designated':'self',virtualNums:designatedMode?requestedVirtual:base,
         reached:!!reachedStage,reachedReplace:reachedStage?.replaceCount||null,
         inferred:inferredNumbers(inferenceSource,12),
         shortlist:{stage1:shortlist1,stage2:shortlist2,active:(shortlist2&&shortlist2.nums.length)?shortlist2:shortlist1},
@@ -553,6 +566,8 @@
     }catch(e){console.error('ReverseInferenceEngine',e);return {error:e.message||String(e)};}
     finally{
       __fastRegularSession=false;
+      __fixedVirtualDraw=null;
+      if(fixedRow){const all=rows();const idx=all.indexOf(fixedRow);if(idx>=0)all.splice(idx,1);invalidate();}
       if(sessionStarted)try{sf.endPreciseSession?.();}catch(e){}
       state.running=false;invalidate();
     }

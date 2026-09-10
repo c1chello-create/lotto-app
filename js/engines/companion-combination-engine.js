@@ -636,12 +636,13 @@
       pair:m.pair,triple:m.triple,quad:m.quad,recent:m.recent
     };
   }
-  function scorePatternComboV3Virtual(nums,context){
+  function scorePatternComboV3VirtualWithDraw(nums,virtualNums,context){
     const clean=cleanNums(nums);
-    if(clean.length!==6)return null;
+    const draw=cleanNums(virtualNums);
+    if(clean.length!==6||draw.length!==6)return null;
     const ctx=context||prepareVirtualPatternContext({});
     if(!ctx)return null;
-    const maps=virtualMaps(clean,ctx);
+    const maps=virtualMaps(draw,ctx);
     const m=repeatSupportedMetrics(clean,maps);
     return {
       nums:clean,
@@ -654,6 +655,10 @@
       confidenceParts:m.confidenceParts,
       pair:m.pair,triple:m.triple,quad:m.quad,recent:m.recent
     };
+  }
+
+  function scorePatternComboV3Virtual(nums,context){
+    return scorePatternComboV3VirtualWithDraw(nums,nums,context);
   }
 
   function compareOptimizedV3(a,b){
@@ -795,7 +800,7 @@
     state,defaults,aggregate,details,scopedRows,pool,choose,keyOf,
     bestWithCandidate,recommendationPatterns,strength,selectedNumsFromInput,requiredSelectedCount,indexForPattern,patternSetIndex,aiUsageForPattern,gradeForScore,
     scorePatternCombo:scorePatternComboV3,optimizePattern:optimizePatternV3,explainPatternRecommendation,
-    phase3Weights,scorePatternComboV3,scorePatternComboV3Virtual,prepareVirtualPatternContext,optimizePatternV3,backtestPhase3,
+    phase3Weights,scorePatternComboV3,scorePatternComboV3Virtual,scorePatternComboV3VirtualWithDraw,prepareVirtualPatternContext,optimizePatternV3,backtestPhase3,
     clearOptimizerCache:()=>{optimizerCache.clear();virtualPatternContextCache.clear();}
   });
 })(window);
