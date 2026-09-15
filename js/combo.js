@@ -2910,6 +2910,60 @@ renderRankedCombos=function(data){
     });
     return Object.entries(counts).map(([n,count])=>({n:Number(n),count})).filter(x=>x.count>0).sort((a,b)=>b.count-a.count||a.n-b.n).slice(0,12);
   }
+
+  /* v1.9.9 Pattern Wildcard
+     - 45개 전체 2·3계열을 먼저 본 뒤 25개 후보풀 밖의 강한 번호만 별도 보존
+     - 2계열 60% + 3계열 40%
+     - 25개 내부 번호와 실제 체크포인트에서 함께 나온 Bridge Pattern을 최우선
+     - 외부번호끼리만 묶인 Outside Cluster는 더 엄격하게 보조 표시
+     - 기존 25개 후보풀 / AI Score / Fusion 계산에는 자동 합산하지 않음 */
+  function wildcardPatternAnalysis(pool,selected){
+    const seed=selected.length>=2?selected:pool.slice(0,6);
+    let series;try{series=patternSeriesScores(seed)}catch(e){return {items:[],clusters:[],checked:0,note:'Pattern 계산 실패'}}
+    const poolSet=new Set(pool), outside=[];
+    for(let n=1;n<=45;n++)if(!poolSet.has(n))outside.push(n);
+    const twoMap=new Map((series.two?.list||[]).map(x=>[Number(x.n),Number(x.count)||0]));
+    const threeMap=new Map((series.three?.list||[]).map(x=>[Number(x.n),Number(x.count)||0]));
+    const maxTwo=Math.max(1,...outside.map(n=>twoMap.get(n)||0));
+    const maxThree=Math.max(1,...outside.map(n=>threeMap.get(n)||0));
+    const bridge=new Map(), outsidePair=new Map();
+    const rows=series.samples?.length?series.samples:roundsInScope().slice(-50);
+    const gapDefs=[{gaps:[2,4,6,8,10,12,14,16,18,20,22,24],w:.60,tag:'2'},{gaps:[3,6,9,12,15],w:.40,tag:'3'}];
+    let checked=0;
+    rows.forEach(r=>gapDefs.forEach(def=>def.gaps.forEach(g=>{
+      const prev=getPrevRound(r,g);if(!prev)return;checked++;
+      const nums=[...new Set(roundNums(prev,true))];
+      const ins=nums.filter(n=>poolSet.has(n)), outs=nums.filter(n=>!poolSet.has(n));
+      outs.forEach(o=>ins.forEach(i=>{
+        const k=o+'|'+i, rec=bridge.get(k)||{outside:o,inside:i,two:0,three:0,weighted:0};
+        if(def.tag==='2')rec.two++;else rec.three++;rec.weighted+=def.w;bridge.set(k,rec);
+      }));
+      for(let a=0;a<outs.length;a++)for(let b=a+1;b<outs.length;b++){
+        const x=Math.min(outs[a],outs[b]),y=Math.max(outs[a],outs[b]),k=x+'|'+y;
+        const rec=outsidePair.get(k)||{nums:[x,y],two:0,three:0,weighted:0};
+        if(def.tag==='2')rec.two++;else rec.three++;rec.weighted+=def.w;outsidePair.set(k,rec);
+      }
+    })));
+    const byOutside=new Map();
+    bridge.forEach(rec=>{if(!byOutside.has(rec.outside))byOutside.set(rec.outside,[]);byOutside.get(rec.outside).push(rec)});
+    const items=outside.map(n=>{
+      const two=twoMap.get(n)||0,three=threeMap.get(n)||0;
+      const seriesScore=Math.round((two/maxTwo)*60+(three/maxThree)*40);
+      const links=(byOutside.get(n)||[]).sort((a,b)=>b.weighted-a.weighted||b.two-a.two||b.three-a.three||a.inside-b.inside);
+      const strongLinks=links.filter(x=>x.two+x.three>=2);
+      const bridgeHits=strongLinks.reduce((s,x)=>s+x.two+x.three,0);
+      const bridgeScore=Math.min(100,Math.round(strongLinks.reduce((s,x)=>s+x.weighted,0)*8));
+      const score=Math.round(seriesScore*.70+bridgeScore*.30);
+      return {n,two,three,seriesScore,bridgeScore,score,links:strongLinks.slice(0,5),bridgeHits};
+    }).filter(x=>x.bridgeHits>=2 && (x.two>0||x.three>0))
+      .sort((a,b)=>b.score-a.score||b.bridgeHits-a.bridgeHits||a.n-b.n).slice(0,5);
+    const wildcardSet=new Set(items.map(x=>x.n));
+    const clusters=[...outsidePair.values()].filter(x=>{
+      const total=x.two+x.three;
+      return total>=3 && x.weighted>=1.6 && x.nums.some(n=>wildcardSet.has(n));
+    }).sort((a,b)=>b.weighted-a.weighted||(b.two+b.three)-(a.two+a.three)||a.nums[0]-b.nums[0]).slice(0,5);
+    return {items,clusters,checked,series};
+  }
   function linkedGroups(pool,selected){
     const rows=sourceRows(), counts=new Map();
     rows.forEach(row=>{
@@ -2932,7 +2986,9 @@ renderRankedCombos=function(data){
     const s=state();
     if(!s.active){box.innerHTML='';return;}
     let data;try{data=companionAnalysis()}catch(e){data={rows:[],top:[],counts:{}}}
-    const ai=aiCandidates(data,s.pool), pattern=patternCandidates(s.pool,s.selected), companion=companionCandidates(s.pool,s.selected), groups=linkedGroups(s.pool,s.selected), overlap=common(ai,pattern,companion);
+    const ai=aiCandidates(data,s.pool), pattern=patternCandidates(s.pool,s.selected), companion=companionCandidates(s.pool,s.selected), groups=linkedGroups(s.pool,s.selected), overlap=common(ai,pattern,companion), wildcard=wildcardPatternAnalysis(s.pool,s.selected);
+    const wildcardHtml=wildcard.items.length?wildcard.items.map((x,i)=>`<div class="pool25-group"><div><div class="combo-selected">${ball(x.n,true)}</div><p class="combo-guide" style="margin:4px 0 0">${x.links.length?`Bridge → ${x.links.map(l=>`${l.inside}번(${l.two+l.three}회)`).join(' · ')}`:'Bridge 없음'} · 2계열 ${x.two} · 3계열 ${x.three}</p></div><strong>${i+1}위 · ${x.score}점</strong></div>`).join(''):'<p class="combo-guide">현재 기준을 통과한 외부 Pattern Wildcard가 없습니다.</p>';
+    const clusterHtml=wildcard.clusters.length?`<details style="margin-top:10px"><summary style="font-weight:900;color:#11366b;cursor:pointer">외부 보조 Cluster ${wildcard.clusters.length}개 보기</summary>${wildcard.clusters.map(x=>`<div class="pool25-group"><div class="combo-selected">${x.nums.map(n=>ball(n,true)).join('')}</div><strong>${x.two+x.three}회</strong></div>`).join('')}</details>`:'';
     box.innerHTML=`<div class="combo-card pool25-analysis-card">
       <div class="pool25-analysis-head"><b>🎯 후보풀 25 전용 통합분석</b><span>25개 내부 전용</span></div>
       <p class="combo-guide">기존 선택번호 연관 동반조합은 그대로 유지합니다. 아래 결과는 확정한 25개 번호 안에서만 별도로 계산합니다.</p>
@@ -2941,7 +2997,8 @@ renderRankedCombos=function(data){
       <section class="pool25-block"><b>③ 25개 내부 동반출현 후보</b><p class="combo-guide">${s.selected.length?s.selected.join('·')+'번과 연결된 회차':'현재 범위'}에서 25개 내부 번호만 집계합니다.</p><div class="combo-selected">${balls(companion)}</div></section>
       <section class="pool25-block"><b>🔗 25개 전용 선택번호 연관 동반조합</b>${groups.length?groups.map(g=>`<div class="pool25-group"><div class="combo-selected">${g.nums.map(n=>ball(n,true)).join('')}</div><strong>${g.count}회</strong></div>`).join(''):'<p class="combo-guide">현재 범위에서 2회 이상 반복된 3개 연관조합이 없습니다.</p>'}</section>
       <section class="pool25-common"><b>④ 세 분석 공통 후보번호</b><p class="combo-guide">AI TOP10 · Pattern · 동반출현 중 2개 이상 분석에서 반복된 번호입니다. 3개 분석 공통은 가장 먼저 표시합니다.</p><div class="combo-selected">${overlap.length?overlap.map(x=>ball(x.n,true,x.hit===3?'selected-ball':'')).join(''):'<span class="combo-guide">현재 공통 후보가 없습니다.</span>'}</div>${overlap.length?`<p class="combo-guide">${overlap.map(x=>`${x.n}번 ${x.hit}/3`).join(' · ')}</p>`:''}</section>
-      <p class="combo-guide">※ 이 카드는 후보를 비교·압축하기 위한 참고 분석이며 번호를 자동 제외하지 않습니다.</p>
+      <section class="pool25-block" style="background:#fffaf0;border:1px solid #f2d99b;border-radius:14px;padding:13px;margin-top:14px"><b>🃏 Pattern Wildcard TOP ${wildcard.items.length}</b><p class="combo-guide">45개 전체의 2·3계열을 확인한 뒤, 25개 후보풀 밖 번호 중 내부 번호와 반복 Bridge Pattern이 확인된 번호만 별도 보존합니다. 2계열 60% + 3계열 40%. 후보풀과 Fusion 점수에는 자동 합산하지 않습니다.</p>${wildcardHtml}${clusterHtml}<p class="combo-guide">체크포인트 ${wildcard.checked.toLocaleString()}개 · Bridge 2회 이상만 Wildcard 후보 · 외부 Cluster는 3회 이상 보조표시</p></section>
+      <p class="combo-guide">※ 이 카드는 후보를 비교·압축하기 위한 참고 분석이며 번호를 자동 제외하지 않습니다. Wildcard 역시 독립 참고 트랙입니다.</p>
     </div>`;
   }
   global.Pool25DedicatedAnalysis=Object.freeze({render});
