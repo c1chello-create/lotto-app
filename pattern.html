@@ -1006,6 +1006,87 @@ loadData();
 })();
 
 </script>
+<script>
+/* v1.5 Pattern 강화 AI Score TOP10 — pattern.html 전용, 기존 조합분석/Fusion과 독립 */
+(function(){
+  if(window.__patternBoostAiTop10V15)return; window.__patternBoostAiTop10V15=true;
+  const clamp=v=>Math.max(0,Math.min(100,Math.round(Number(v)||0)));
+
+  function buildPatternBoostTop10(nums){
+    try{
+      const samples=getSampleRows(nums);
+      const p2=freqFromIndexedSamples(samples,gapsForSeries('series2',samples.length)); p2.step=2;
+      const p3=freqFromIndexedSamples(samples,gapsForSeries('series3',samples.length)); p3.step=3;
+      const auto=analyzeAuto(samples);
+      const active=analysisMode==='series2'?[p2]:analysisMode==='series3'?[p3]:auto.slice(0,3);
+      const candidates=scoreCandidates(active).slice(0,10);
+      if(!candidates.length)return [];
+      const groups=coOccurrenceGroups(samples,active);
+      const replayRates=replayRateForCandidates(samples,candidates,analysisMode);
+      const replayTop=replayRates[0]?.topNums||[];
+      const flows=buildFlowChains(samples,active);
+      const flowMap={}; flows.forEach(f=>f.nums.forEach(n=>flowMap[n]=(flowMap[n]||0)+f.count));
+      const boost=getDreamChainBoostData(samples,candidates,groups,analysisMode);
+      const dreamMap={}; (boost.merged||[]).forEach(x=>dreamMap[x.n]=x.score);
+      const maxCandidate=Math.max(1,...candidates.map(c=>Number(c.score||c.count||0)));
+      const maxReplay=Math.max(1,...replayTop.map(x=>Number(x.count||0)));
+      const maxFlow=Math.max(1,...Object.values(flowMap));
+      const maxDream=Math.max(1,...Object.values(dreamMap));
+      // v1.5의 기존 Pattern Quality 산출방식을 그대로 사용한다. 새 알고리즘을 섞지 않는다.
+      const patternQuality=clamp((active[0]?.concentration||0)*70 + Math.min(30,(samples.length/Math.max(1,sampleLimit))*30));
+
+      return candidates.map(c=>{
+        const n=Number(c.n);
+        const frequency=clamp(Number(c.score||c.count||0)/maxCandidate*100);
+        const continuity=typeof window.getIntervalContinuityScore==='function'?clamp(window.getIntervalContinuityScore(n)):0;
+        const replayItem=replayTop.find(x=>Number(x.n)===n);
+        const replay=clamp((replayItem?.count||0)/maxReplay*100);
+        const flow=clamp((flowMap[n]||0)/maxFlow*100);
+        const dream=clamp((dreamMap[n]||0)/maxDream*100);
+        const quality=patternQuality;
+        const score=Number((frequency*.30 + continuity*.20 + replay*.15 + flow*.10 + quality*.20 + dream*.05).toFixed(1));
+        return {n,score,frequency,continuity,replay,flow,quality,dream};
+      }).sort((a,b)=>b.score-a.score||b.quality-a.quality||b.continuity-a.continuity||a.n-b.n).slice(0,10);
+    }catch(e){console.error('Pattern 강화 AI TOP10 계산 오류',e);return []}
+  }
+
+  function renderPatternBoostTop10(nums){
+    const rows=buildPatternBoostTop10(nums); if(!rows.length)return'';
+    const metric=(label,v,w)=>`<span>${label} ${v}×${w}%</span>`;
+    return `<div class="title">🤖 Pattern 강화 AI Score TOP10</div>
+      <div class="ai-score-detail-card pattern-boost-top10">
+        <h3>동반패턴분석 v1.5 전용 TOP10</h3>
+        <div class="ai-score-formula">Frequency 30% · Continuity 20% · Replay 15% · Flow 10% · Pattern Quality 20% · Dream 5%</div>
+        <p class="guide">이 TOP10은 동반패턴분석 v1.5 안에서만 계산되는 독립 참고점수입니다. 조합분석 AI Score·Fusion·25개 후보풀에는 반영하지 않습니다.</p>
+        ${rows.map((r,i)=>`<div class="ai-score-number" data-pattern-boost-row>
+          <div class="ai-score-summary">${ball(r.n,true,'selected-ball')}<button type="button" data-pattern-boost-toggle><b>${i+1}위 · ${r.n}번 ▼</b><div class="muted">점수 구성 보기</div></button><div class="ai-score-total">${r.score}점</div></div>
+          <div class="ai-score-breakdown">
+            <div class="ai-score-line"><span>Frequency</span><b>${(r.frequency*.30).toFixed(1)}/30</b><span>원점수 ${r.frequency}</span></div>
+            <div class="ai-score-line"><span>Continuity</span><b>${(r.continuity*.20).toFixed(1)}/20</b><span>원점수 ${r.continuity}</span></div>
+            <div class="ai-score-line"><span>Replay</span><b>${(r.replay*.15).toFixed(1)}/15</b><span>원점수 ${r.replay}</span></div>
+            <div class="ai-score-line"><span>Flow</span><b>${(r.flow*.10).toFixed(1)}/10</b><span>원점수 ${r.flow}</span></div>
+            <div class="ai-score-line"><span>Pattern Quality</span><b>${(r.quality*.20).toFixed(1)}/20</b><span>원점수 ${r.quality}</span></div>
+            <div class="ai-score-line"><span>Dream</span><b>${(r.dream*.05).toFixed(1)}/5</b><span>원점수 ${r.dream}</span></div>
+            <div class="ai-score-line"><span><b>Pattern 강화 AI Score</b></span><b>${r.score}/100</b><span>합계</span></div>
+          </div>
+        </div>`).join('')}
+      </div>`;
+  }
+
+  const previous=window.renderResult;
+  if(typeof previous==='function'){
+    window.renderResult=renderResult=function(nums){
+      previous(nums);
+      const box=document.getElementById('patternResult');
+      if(box)box.insertAdjacentHTML('beforeend',renderPatternBoostTop10(nums));
+    };
+  }
+  document.addEventListener('click',e=>{
+    const b=e.target.closest('[data-pattern-boost-toggle]');
+    if(b)b.closest('[data-pattern-boost-row]')?.classList.toggle('open');
+  });
+})();
+</script>
 <script src="interval_pattern.js?v=explainable-v15"></script>
 <script src="js/consecutive-pattern-engine.js?v=v200"></script>
 <script src="js/consecutive-pattern-ui.js?v=v200"></script>
