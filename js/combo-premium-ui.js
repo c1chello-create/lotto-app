@@ -302,7 +302,7 @@ function renderRankedCombos(data){
       <p class="combo-guide">현재 6개 번호를 유지하면서 1개 교체부터 시작해 필요하면 최대 3개까지 탐색합니다. 후보풀 25개가 설정되면 추가번호는 후보풀 밖에서 가져오지 않습니다.</p>
       <div class="score-opt-controls"><label>목표점수<select id="scoreOptTarget"><option value="60">60점 이상</option><option value="70" selected>70점 이상</option><option value="80">80점 이상</option></select></label><label>최대 교체<select id="scoreOptMax"><option value="1">1개</option><option value="2">2개</option><option value="3" selected>3개</option></select></label></div>
       <button type="button" id="scoreOptimizerRun" class="combo-btn" ${base.length===6?'':'disabled'}>최적해 번호교체 실행</button>
-      <button type="button" id="scoreDiagRun" class="combo-btn" style="margin-top:10px">🔬 AI Score 진단 · 점수 근거 보기</button><div id="scoreDiagPanel" style="margin-top:10px"></div><div id="scoreOptimizerResult">${base.length===6?'<p class="combo-guide">실행하면 대표 최적해와 공동 최적해를 표시합니다.</p>':'<p class="combo-guide">번호 6개를 입력한 뒤 사용할 수 있습니다.</p>'}</div>
+      <button type="button" id="scoreDiagRun" class="combo-btn" style="margin-top:10px" onclick="if(window.AIScoreDiagnosticRun){window.AIScoreDiagnosticRun()}else{var h=document.getElementById('scoreDiagPanel');if(h)h.textContent='진단 기능을 불러오지 못했습니다. combo.html의 스크립트 버전과 캐시를 확인해 주세요.'}">🔬 AI Score 진단 · 점수 근거 보기</button><div id="scoreDiagPanel" style="margin-top:10px"></div><div id="scoreOptimizerResult">${base.length===6?'<p class="combo-guide">실행하면 대표 최적해와 공동 최적해를 표시합니다.</p>':'<p class="combo-guide">번호 6개를 입력한 뒤 사용할 수 있습니다.</p>'}</div>
     </section>`;
   }
 
@@ -403,8 +403,8 @@ function renderRankedCombos(data){
   html+='</div>';el.innerHTML=html;
   el.scrollIntoView({behavior:'smooth',block:'nearest'});
  }
+ global.AIScoreDiagnosticRun=function(){try{render();}catch(err){const host=$('scoreDiagPanel');if(host){host.textContent='진단 표시 오류: '+String(err.message||err);host.scrollIntoView({behavior:'smooth',block:'center'});}console.error('AI Score 진단 오류',err);}};
  document.addEventListener('click',ev=>{
-  if(ev.target.closest('#scoreDiagRun')){try{render();}catch(err){const host=$('scoreDiagPanel');if(host){host.textContent='진단 표시 오류: '+String(err.message||err);host.scrollIntoView({behavior:'smooth',block:'center'});}console.error('AI Score 진단 오류',err);}return;}
   const b=ev.target.closest('[data-diag]');if(b){const [i,n]=b.dataset.diag.split(':').map(Number);showDetail(i,n);}
  });
  document.addEventListener('change',ev=>{if(ev.target.id==='diagBonus'&&state){const current=$('scoreDiagDetail');if(current)current.innerHTML='<p class="combo-guide">보너스 설정이 변경되었습니다. 번호를 다시 선택해 주세요.</p>';}});
