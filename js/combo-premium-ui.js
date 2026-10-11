@@ -302,7 +302,7 @@ function renderRankedCombos(data){
       <p class="combo-guide">현재 6개 번호를 유지하면서 1개 교체부터 시작해 필요하면 최대 3개까지 탐색합니다. 후보풀 25개가 설정되면 추가번호는 후보풀 밖에서 가져오지 않습니다.</p>
       <div class="score-opt-controls"><label>목표점수<select id="scoreOptTarget"><option value="60">60점 이상</option><option value="70" selected>70점 이상</option><option value="80">80점 이상</option></select></label><label>최대 교체<select id="scoreOptMax"><option value="1">1개</option><option value="2">2개</option><option value="3" selected>3개</option></select></label></div>
       <button type="button" id="scoreOptimizerRun" class="combo-btn" ${base.length===6?'':'disabled'}>최적해 번호교체 실행</button>
-      <div id="scoreOptimizerResult">${base.length===6?'<p class="combo-guide">실행하면 대표 최적해와 공동 최적해를 표시합니다.</p>':'<p class="combo-guide">번호 6개를 입력한 뒤 사용할 수 있습니다.</p>'}</div>
+      <button type="button" id="scoreDiagRun" class="combo-btn" style="margin-top:10px">🔬 AI Score 진단 · 점수 근거 보기</button><div id="scoreDiagPanel" style="margin-top:10px"></div><div id="scoreOptimizerResult">${base.length===6?'<p class="combo-guide">실행하면 대표 최적해와 공동 최적해를 표시합니다.</p>':'<p class="combo-guide">번호 6개를 입력한 뒤 사용할 수 있습니다.</p>'}</div>
     </section>`;
   }
 
@@ -322,4 +322,73 @@ function renderRankedCombos(data){
   const oldRenderAll=global.ComboUI&&global.ComboUI.renderAll;
   if(oldRenderAll&&!global.__pool25ComboUIWrapped){global.__pool25ComboUIWrapped=true;global.ComboUI.renderAll=function(){const r=oldRenderAll.apply(this,arguments);setTimeout(render,0);return r;}}
   setTimeout(render,250);
+})(window);
+
+
+/* AI Score diagnostic add-on: read-only; no scoring/optimizer modifications. */
+(function(global){
+ 'use strict';
+ const $=id=>document.getElementById(id);
+ const escapeHtml=x=>String(x==null?'':x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const names={companion:'Companion',frequency:'Frequency',continuity:'Continuity',pattern:'Pattern',replay:'Replay',flow:'Flow',dream:'Dream'};
+ const weights={companion:24,frequency:18,continuity:12,pattern:16,replay:12,flow:10,dream:8};
+ const fallbackWeights={frequency:40,continuity:20,replay:15,flow:10,pattern:10,dream:5};
+ const getRows=()=>{const a=[global.LOTTO_DATA,global.lottoData];return (a.find(x=>Array.isArray(x)&&x.length)||[]).slice().sort((a,b)=>(Number(b.round)||0)-(Number(a.round)||0));};
+ const numbers=row=>{const a=(row.numbers||row.nums||[]).map(Number);const b=Number(row.bonus);if($('diagBonus')?.checked&&b>=1&&b<=45)a.push(b);return [...new Set(a)];};
+ const chosenRows=(n,k,anchor)=>{
+  const arr=getRows().filter(r=>numbers(r).includes(n));
+  const counts=new Map();
+  for(const r of arr){const other=numbers(r).filter(x=>x!==n).sort((a,b)=>a-b);
+   const rec=(start,sel)=>{if(sel.length===k-1){const a=[n,...sel].sort((a,b)=>a-b),key=a.join(',');let x=counts.get(key);if(!x){x={nums:a,rows:[]};counts.set(key,x)}x.rows.push(r);return;}
+    for(let i=start;i<other.length;i++)rec(i+1,[...sel,other[i]]);};rec(0,[]);
+  }
+  return [...counts.values()].sort((a,b)=>b.rows.length-a.rows.length||Number(b.rows[0]?.round||0)-Number(a.rows[0]?.round||0)).slice(0,15);
+ };
+ let state=null;
+ function render(){
+  const host=$('scoreDiagPanel');if(!host)return;
+  const p=global.ScoreOptimizerPreview?.getState?.().last;
+  if(!p){host.innerHTML='<p class="combo-guide">먼저 「최적해 번호교체 실행」을 눌러 실제 계산 결과를 생성해 주세요.</p>';return;}
+  state=p;
+  const entries=[['현재 조합',p.original],['대표 최적해',p.chosen]];
+  let html='<section class="combo-card" style="padding:12px"><b>🔬 AI Score 실제 계산 경로 진단</b><p class="combo-guide">표의 점수 칸을 누르면 해당 번호의 계산 항목과 과거 동반 조합을 볼 수 있습니다. 아래 출현 이력은 참고자료이며 해당 항목의 직접 산출근거와 구분됩니다.</p>';
+  entries.forEach(([label,e],idx)=>{
+   const source=e.consensus?.mode==='optimizer-local'?'보조 계산 (Optimizer Local)':e.consensus?.mode==='weight-only'?'Consensus (7항목)':'계산 경로 미확인';
+   html+=`<div style="margin-top:12px"><b>${label}</b><p class="combo-guide">${e.nums.join(' · ')} · ${escapeHtml(source)} · 최저 ${e.min} · 평균 ${e.avg} · 조합 ${e.combo}</p><div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px">`;
+   for(const d of e.details){html+=`<button type="button" data-diag="${idx}:${d.number}" style="border:1px solid #cbd5e1;border-radius:9px;padding:10px 3px;background:transparent"><b>${d.number}번</b><div>${d.score}점</div><small>상세 보기 ›</small></button>`;}
+   html+='</div></div>';
+  });
+  html+='<label style="display:block;margin-top:12px"><input id="diagBonus" type="checkbox"> 참고 출현이력에서 보너스 포함</label><div id="scoreDiagDetail" style="margin-top:12px"></div></section>';
+  host.innerHTML=html;
+ }
+ function showDetail(which,n){
+  const el=$('scoreDiagDetail');if(!el||!state)return;
+  const e=which===0?state.original:state.chosen;
+  const c=e.consensus||{};
+  const d=(c.details||[]).find(x=>Number(x.number)===n);
+  const keys=c.mode==='optimizer-local'?['frequency','continuity','replay','flow','pattern','dream']:Object.keys(weights);
+  const ws=c.mode==='optimizer-local'?fallbackWeights:weights;
+  let html=`<div style="border:1px solid #cbd5e1;border-radius:12px;padding:12px"><b>${n}번 · ${which===0?'현재 조합':'대표 최적해'} 상세</b><p class="combo-guide">계산 경로: ${escapeHtml(c.mode||'미확인')} · 최종 ${e.details.find(x=>x.number===n)?.score??'-'}점</p>`;
+  if(d?.scores){
+   html+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th>항목</th><th>원점수</th><th>가중치</th><th>기여점수</th></tr></thead><tbody>';
+   for(const k of keys){const v=Number(d.scores[k]||0),w=ws[k]||0;html+=`<tr><td>${names[k]||k}</td><td style="text-align:center">${v}</td><td style="text-align:center">${w}%</td><td style="text-align:center">${(v*w/100).toFixed(2)}</td></tr>`;}
+   html+='</tbody></table></div>';
+   if(c.mode==='weight-only'){const supporters=d.supporters||[];const bonus=Math.max(0,supporters.length-2)*2.5;html+=`<p class="combo-guide">60점 이상 신호 ${supporters.length}개 (${escapeHtml(supporters.join(', ')||'없음')}) · 합의 보너스 ${bonus}점 · 반올림 후 ${d.score}점</p>`;}
+   else html+='<p class="combo-guide">보조 계산 경로: 위 6개 항목 가중합을 반올림한 점수입니다. Dream 값은 보조 산식에서 다른 신호로 계산됩니다.</p>';
+  }else html+='<p class="combo-guide">현재 저장된 결과에는 항목별 세부점수가 없습니다. 최적화 재실행 후 확인해 주세요.</p>';
+  html+='<p class="combo-guide"><b>과거 동반 패턴 (참고 출현이력)</b> · 아래 조합은 출현횟수 기준이며 Consensus 점수의 직접 근거를 뜻하지 않습니다.</p>';
+  for(const k of [2,3,4]){
+   const list=chosenRows(n,k);
+   html+=`<details ${k===2?'open':''}><summary>${k}개 조합 · 상위 ${list.length}개</summary>`;
+   if(!list.length)html+='<p>출현 기록 없음</p>';
+   for(const item of list){html+=`<details style="margin:6px 0;padding:5px;border-bottom:1px solid #ddd"><summary>${item.nums.join(' · ')} — ${item.rows.length}회</summary><div style="font-size:13px;line-height:1.7">${item.rows.map(r=>`${escapeHtml(r.round)}회 (${escapeHtml(r.date||'날짜 미상')})`).join(' · ')}</div></details>`;}
+   html+='</details>';
+  }
+  html+='</div>';el.innerHTML=html;
+ }
+ document.addEventListener('click',ev=>{
+  if(ev.target.closest('#scoreDiagRun')){render();return;}
+  const b=ev.target.closest('[data-diag]');if(b){const [i,n]=b.dataset.diag.split(':').map(Number);showDetail(i,n);}
+ });
+ document.addEventListener('change',ev=>{if(ev.target.id==='diagBonus'&&state){const current=$('scoreDiagDetail');if(current)current.innerHTML='<p class="combo-guide">보너스 설정이 변경되었습니다. 번호를 다시 선택해 주세요.</p>';}});
 })(window);
