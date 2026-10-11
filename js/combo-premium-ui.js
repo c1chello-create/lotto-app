@@ -348,9 +348,23 @@ function renderRankedCombos(data){
  function render(){
   const host=$('scoreDiagPanel');if(!host)return;
   const p=global.ScoreOptimizerPreview?.getState?.().last;
-  if(!p){host.innerHTML='<p class="combo-guide">먼저 「최적해 번호교체 실행」을 눌러 실제 계산 결과를 생성해 주세요.</p>';return;}
-  state=p;
-  const entries=[['현재 조합',p.original],['대표 최적해',p.chosen]];
+  let payload=p;
+  if(!payload){
+   const raw=($('comboInput')?.value||'').split(/[\s,]+/).map(Number);
+   const nums=[...new Set(raw.filter(n=>Number.isInteger(n)&&n>=1&&n<=45))].sort((a,b)=>a-b);
+   if(nums.length!==6){host.innerHTML='<div style="border:1px solid #cbd5e1;border-radius:10px;padding:12px">진단을 시작하려면 위의 분석번호 입력란에 번호 6개를 입력해 주세요. 또는 「최적해 번호교체 실행」 후 두 조합을 비교할 수 있습니다.</div>';host.scrollIntoView({behavior:'smooth',block:'center'});return;}
+   try{
+    if(!global.ConsensusEngine?.scoreCombo)throw Error('Consensus 엔진이 아직 로드되지 않았습니다.');
+    const data=global.CompanionEngine?.analyze?.();
+    const c=global.ConsensusEngine.scoreCombo(nums,data);
+    const details=(c.details||[]).map(d=>({number:Number(d.number),score:Number(d.score)||0}));
+    const scores=details.map(d=>d.score);
+    payload={original:{nums,details,consensus:c,min:Math.min(...scores),avg:Math.round(scores.reduce((a,b)=>a+b,0)/scores.length),combo:c.score},chosen:null};
+   }catch(err){host.innerHTML='<div style="border:1px solid #e0a2a2;border-radius:10px;padding:12px">진단 실행 오류: '+escapeHtml(err.message||err)+'</div>';host.scrollIntoView({behavior:'smooth',block:'center'});return;}
+  }
+  state=payload;
+  const entries=[['현재 조합',payload.original]];
+  if(payload.chosen)entries.push(['대표 최적해',payload.chosen]);
   let html='<section class="combo-card" style="padding:12px"><b>🔬 AI Score 실제 계산 경로 진단</b><p class="combo-guide">표의 점수 칸을 누르면 해당 번호의 계산 항목과 과거 동반 조합을 볼 수 있습니다. 아래 출현 이력은 참고자료이며 해당 항목의 직접 산출근거와 구분됩니다.</p>';
   entries.forEach(([label,e],idx)=>{
    const source=e.consensus?.mode==='optimizer-local'?'보조 계산 (Optimizer Local)':e.consensus?.mode==='weight-only'?'Consensus (7항목)':'계산 경로 미확인';
@@ -360,10 +374,12 @@ function renderRankedCombos(data){
   });
   html+='<label style="display:block;margin-top:12px"><input id="diagBonus" type="checkbox"> 참고 출현이력에서 보너스 포함</label><div id="scoreDiagDetail" style="margin-top:12px"></div></section>';
   host.innerHTML=html;
+  host.scrollIntoView({behavior:'smooth',block:'start'});
  }
  function showDetail(which,n){
   const el=$('scoreDiagDetail');if(!el||!state)return;
   const e=which===0?state.original:state.chosen;
+  if(!e)return;
   const c=e.consensus||{};
   const d=(c.details||[]).find(x=>Number(x.number)===n);
   const keys=c.mode==='optimizer-local'?['frequency','continuity','replay','flow','pattern','dream']:Object.keys(weights);
@@ -385,9 +401,10 @@ function renderRankedCombos(data){
    html+='</details>';
   }
   html+='</div>';el.innerHTML=html;
+  el.scrollIntoView({behavior:'smooth',block:'nearest'});
  }
  document.addEventListener('click',ev=>{
-  if(ev.target.closest('#scoreDiagRun')){render();return;}
+  if(ev.target.closest('#scoreDiagRun')){try{render();}catch(err){const host=$('scoreDiagPanel');if(host){host.textContent='진단 표시 오류: '+String(err.message||err);host.scrollIntoView({behavior:'smooth',block:'center'});}console.error('AI Score 진단 오류',err);}return;}
   const b=ev.target.closest('[data-diag]');if(b){const [i,n]=b.dataset.diag.split(':').map(Number);showDetail(i,n);}
  });
  document.addEventListener('change',ev=>{if(ev.target.id==='diagBonus'&&state){const current=$('scoreDiagDetail');if(current)current.innerHTML='<p class="combo-guide">보너스 설정이 변경되었습니다. 번호를 다시 선택해 주세요.</p>';}});
