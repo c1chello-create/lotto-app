@@ -85,7 +85,7 @@
 <script src="js/ai-core.js?v=v190-score-opt-preview1"></script>
 <script src="js/combo-ui.js?v=v190-score-opt-preview1"></script>
 <script src="js/pattern-reference-engine.js?v=v190-score-opt-preview1"></script>
-<script src="js/combo-premium-ui.js?v=v196-ai-score-diag-click-fix-20261011"></script>
+<script src="js/combo-premium-ui.js?v=diag-v3-20261011-1900"></script>
 <script src="js/engines/companion-combination-engine.js?v=v193-score-contribution1"></script>
 <script src="js/companion-combination-ui.js?v=v193-score-contribution1"></script>
 <script src="js/engines/score-fusion-engine.js?v=v120-reverse-fast"></script>
@@ -94,5 +94,26 @@
 <script src="js/score-fusion-ui.js?v=v100-fusion"></script>
 <script src="js/reverse-inference-ui.js?v=v110-reverse-fast"></script>
 <script src="js/combination-consensus-ui.js?v=v010-combination-consensus"></script>
+<script>
+/* AI Score diagnostic deployment probe; does not alter scoring. */
+(function(){
+  function report(){
+    var panel=document.getElementById('scoreDiagPanel');
+    if(!panel)return;
+    if(typeof window.AIScoreDiagnosticRun==='function'){
+      window.AIScoreDiagnosticRun();
+      return;
+    }
+    var scripts=[].slice.call(document.scripts);
+    var path=scripts.filter(function(s){return (s.src||'').indexOf('/js/combo-premium-ui.js')>=0;}).map(function(s){return s.src;});
+    panel.textContent='진단 함수 미등록. 로드 요청: '+(path[0]||'스크립트 태그 없음')+' / 최적화 엔진: '+(window.ScoreOptimizerPreview?'등록':'미등록')+'. GitHub js/combo-premium-ui.js 업로드 및 배포 상태를 확인해 주세요.';
+  }
+  document.addEventListener('click',function(e){
+    var b=e.target&&e.target.closest&&e.target.closest('#scoreDiagRun');
+    if(!b)return;
+    e.preventDefault();e.stopImmediatePropagation();report();
+  },true);
+})();
+</script>
 </body>
 </html>
