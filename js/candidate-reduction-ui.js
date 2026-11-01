@@ -54,9 +54,7 @@
         <div class="candidate-result-score"><b>${best.total.toFixed(1)}</b><span>후보 압축점수</span><em>${scopeText} · ${result.includeBonus?'보너스 포함':'보너스 제외'}</em></div>
       </div>
       <div class="candidate-score-grid">
-        ${scoreMetric('출현빈도',best.frequencyScore,45,`후보 ${result.candidates.length}개 안의 상대 출현 강도`)}
-        ${scoreMetric('동반출현',best.coOccurrenceScore,45,'최종 6개에서 가능한 15개 번호쌍')}
-        ${scoreMetric('연결 안정성',best.stabilityScore,10,'일부 강한 쌍에만 치우치는 현상 보정')}
+        ${[['companion','동반번호',30,'15개 번호쌍의 동반출현'],['pattern','Pattern',25,'번호쌍 연결 범위와 균형'],['trend','Trend',10,'최근 50회 출현 흐름'],['structure','Structure',10,'홀짝·번호대·합계 구조'],['learning','Learning',10,'과거 3개 이상 일치 이력'],['replay','Replay',10,'과거 3·4개 이상 재현 이력'],['flow','Flow',5,'최근 대비 전체 3개 이상 일치 흐름']].map(([key,label,weight,note])=>scoreMetric(label,best.components[key],weight,note)).join('')}
       </div>
       <div class="dashboard-change">
         <span class="dashboard-tag good">선정 ${best.nums.join('·')}</span>
@@ -80,7 +78,7 @@
         <summary>선정·제외 근거 자세히 보기</summary>
         <div class="candidate-reason-list">${selectedReasons(result)}${excludedReasons(result)}</div>
       </details>
-      <p class="candidate-footnote">※ 점수는 입력한 후보 ${result.candidates.length}개 안에서 비교한 상대점수입니다. 당첨 확률을 뜻하지 않습니다.</p>`;
+      <p class="candidate-footnote">※ 압축 전용 7개 지표를 사용한 상대점수입니다. 기존 AI Score/Fusion/Consensus와 독립적이며 당첨 확률을 뜻하지 않습니다.</p>`;
 
     $('candidateApplyToDashboard')?.addEventListener('click',applyBest);
     status(`분석 완료 · ${result.totalCombinations}개 조합 비교 · 최신 ${result.latestRound}회`,'success');
@@ -103,7 +101,7 @@
     button.disabled=true;
     const comboCount=engine.combinationCount?engine.combinationCount(candidates.length,6):engine.combinations(candidates,6).length;
     button.textContent=`${comboCount}개 조합 계산 중`;
-    status('출현빈도·동반출현·연결 안정성을 계산하고 있습니다.');
+    status('동반번호·Pattern·Trend 등 7개 항목을 계산하고 있습니다.');
     setTimeout(()=>{
       try{
         const result=engine.analyze(candidates,{scope,includeBonus:$('candidateReductionBonus').checked});
