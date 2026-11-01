@@ -1,4 +1,8 @@
 let lottoData=[],selectedNums=[],matchRange=50,matchMode='partial';const $=id=>document.getElementById(id);
+/* 기본 조합분석 전용 마지막 분석번호 (다른 기능의 저장값과 분리) */
+const comboLastAnalyzedKey='haengun_combo_last_analyzed_nums_v1';
+function saveLastAnalyzedNums(nums){try{localStorage.setItem(comboLastAnalyzedKey,JSON.stringify(nums))}catch(e){console.warn('기본 분석번호 저장 불가',e)}}
+function readLastAnalyzedNums(){try{const saved=JSON.parse(localStorage.getItem(comboLastAnalyzedKey)||'null');if(!Array.isArray(saved))return null;const nums=[...new Set(saved.map(Number))].sort((a,b)=>a-b);return nums.length>=2&&nums.length<=6&&nums.every(n=>Number.isInteger(n)&&n>=1&&n<=45)?nums:null}catch(e){return null}}
 
 /* ===== Candidate Pool 25 v0.1: 계산식 유지, 탐색범위만 제한 ===== */
 let candidatePool25=[];
@@ -139,6 +143,7 @@ function applyDreamPreviewNumbers(nums){
   if(final.length<2){alert('적용할 번호가 부족합니다.');return}
   document.getElementById('comboInput').value=final.join(' ');
   selectedNums=final;
+  saveLastAnalyzedNums(final);
   renderAll();
   if(lastDreamPreviewInfo)renderDreamPreviewResult(lastDreamPreviewInfo);
 }
@@ -954,9 +959,9 @@ function injectHistoryWideStyle(){
 function renderHistory(){injectHistoryWideStyle();const matches=rangeMatches();if(!matches.length){$('history').innerHTML=`<div class="combo-card center">조건에 맞는 회차가 없습니다.</div>`;return}$('history').innerHTML=matches.map(x=>{const row=x.row,hit=x.hit,tag=`${hit.normal}${hit.bonus&&includeBonus()?'+B':''}개`,nums=row.numbers.map(n=>tinyBall(n,selectedNums.includes(n)?'selected-ball':'')).join('');return`<div class="combo-row history-wide"><div class="round-cell"><b>${row.round}회</b><span>${row.date}</span></div><div class="history-balls">${nums}</div><div>${tinyBall(row.bonus,selectedNums.includes(row.bonus)?'selected-ball':'')}</div><div><span class="hit-tag">${tag}</span></div></div>`}).join('')}
 function renderAllLegacy(){renderDreamBridge();if(!selectedNums.length)return;setStatusText();renderSummary();renderCompanion();renderSavedCombos();renderHistory()}
 function renderAll(){if(window.ComboUI&&typeof window.ComboUI.renderAll==='function')return window.ComboUI.renderAll();return renderAllLegacy()}
-async function loadData(){try{const res=await fetch('./data/lotto.json?ts='+Date.now());const data=await res.json();if(!Array.isArray(data))throw new Error('lotto.json 배열 아님');lottoData=data.sort((a,b)=>b.round-a.round);window.LOTTO_DATA=lottoData;window.lottoData=lottoData;$('status').textContent=`전체 ${lottoData.length}개 회차 데이터를 불러왔습니다.`;setTimeout(()=>{renderDreamBridge();renderSavedCombos()},0);const saved=JSON.parse(localStorage.getItem('haengun_my_nums')||'null');if(Array.isArray(saved)&&saved.length>=2){selectedNums=saved.slice(0,6).sort((a,b)=>a-b);$('comboInput').value=selectedNums.join(' ');renderAll()}}catch(e){console.error(e);$('status').textContent='데이터 오류: data/lotto.json을 읽지 못했습니다.'}}
+async function loadData(){try{const res=await fetch('./data/lotto.json?ts='+Date.now());const data=await res.json();if(!Array.isArray(data))throw new Error('lotto.json 배열 아님');lottoData=data.sort((a,b)=>b.round-a.round);window.LOTTO_DATA=lottoData;window.lottoData=lottoData;$('status').textContent=`전체 ${lottoData.length}개 회차 데이터를 불러왔습니다.`;setTimeout(()=>{renderDreamBridge();renderSavedCombos()},0);let saved=readLastAnalyzedNums();if(!saved){try{const legacy=JSON.parse(localStorage.getItem('haengun_my_nums')||'null');if(Array.isArray(legacy)){const nums=[...new Set(legacy.map(Number))].sort((a,b)=>a-b);if(nums.length>=2&&nums.length<=6&&nums.every(n=>Number.isInteger(n)&&n>=1&&n<=45))saved=nums}}catch(e){console.warn('기존 분석번호 복원 실패',e)}}if(saved){selectedNums=saved;$('comboInput').value=selectedNums.join(' ');renderAll()}}catch(e){console.error(e);$('status').textContent='데이터 오류: data/lotto.json을 읽지 못했습니다.'}}
 function addModeButtons(){const box=document.querySelector('.combo-btn-row');if(!box||document.getElementById('modePartial'))return;const wrap=document.createElement('div');wrap.className='combo-btn-row';wrap.innerHTML=`<button id="modePartial" class="active">부분일치</button><button id="modeExact">완전일치</button>`;box.insertAdjacentElement('afterend',wrap);$('modePartial').onclick=()=>{matchMode='partial';$('modePartial').classList.add('active');$('modeExact').classList.remove('active');renderAll()};$('modeExact').onclick=()=>{matchMode='exact';$('modeExact').classList.add('active');$('modePartial').classList.remove('active');renderAll()}}
-function bindEvents(){setTimeout(renderDreamBridge,0);$('analyzeBtn').onclick=()=>{const nums=parseNums();if(!nums)return;selectedNums=nums;renderAll()};document.querySelectorAll('.range-btn').forEach(btn=>{btn.onclick=()=>{document.querySelectorAll('.range-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');matchRange=btn.dataset.range;renderAll()}});$('includeBonus').onchange=()=>renderAll();addModeButtons()}
+function bindEvents(){setTimeout(renderDreamBridge,0);$('analyzeBtn').onclick=()=>{const nums=parseNums();if(!nums)return;selectedNums=nums;saveLastAnalyzedNums(nums);renderAll()};document.querySelectorAll('.range-btn').forEach(btn=>{btn.onclick=()=>{document.querySelectorAll('.range-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');matchRange=btn.dataset.range;renderAll()}});$('includeBonus').onchange=()=>renderAll();addModeButtons()}
 injectHistoryWideStyle();bindEvents();loadCandidatePool25();loadData();
 
 
