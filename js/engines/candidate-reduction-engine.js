@@ -2,7 +2,7 @@
   'use strict';
 
   const cache = new Map();
-  const WEIGHTS = Object.freeze({frequency:0.45,coOccurrence:0.45,stability:0.10});
+  const WEIGHTS = Object.freeze({companion:0.30,pattern:0.25,trend:0.10,structure:0.10,learning:0.10,replay:0.10,flow:0.05});
 
   const clean = nums => [...new Set((nums||[])
     .map(Number)
@@ -82,7 +82,41 @@
     return matrix.pairCounts.get(pairKey(a,b))||0;
   }
 
-  function scoreCombo(nums,matrix,maxFrequency,maxPair){
+  // Compression-only AI-style components; no Consensus/Fusion calls.
+  // All component scores are normalized to 0..100 before weighting.
+  function scoreComponents(nums, matrix, rows, recentMatrix, maxFrequency, maxPair, maxRecent, historical){
+    const pairs=combinations(nums,2);
+    const pairValues=pairs.map(([a,b])=>pairCount(matrix,a,b));
+    const companion=round1(average(pairValues.map(v=>maxPair?clamp(v/maxPair*100):0)));
+    const frequencies=nums.map(n=>matrix.frequency[n]||0);
+    const trend=round1(average(nums.map(n=>maxRecent?clamp((recentMatrix.frequency[n]||0)/maxRecent*100):0)));
+    const odds=nums.filter(n=>n%2).length;
+    const bands=new Set(nums.map(n=>Math.floor((n-1)/10))).size;
+    const sum=nums.reduce((a,b)=>a+b,0);
+    const structure=round1(clamp(100-Math.abs(odds-3)*16-Math.max(0,4-bands)*10-Math.abs(sum-138)*0.30));
+    // Pairwise pattern strength plus coverage; pattern is not a duplicate of companion.
+    const coverage=pairValues.filter(v=>v>0).length/15*100;
+    const nodeStrengths=nums.map(n=>nums.reduce((acc,m)=>acc+(n===m?0:pairCount(matrix,n,m)),0));
+    const minNode=Math.min(...nodeStrengths),maxNode=Math.max(...nodeStrengths);
+    const evenness=maxNode>0?minNode/maxNode*100:0;
+    const pattern=round1(coverage*.45+evenness*.55);
+    // Replay and learning use observed 3+ matches in the selected historical window.
+    let matches3=0, matches4=0, recent3=0;
+    const selected=new Set(nums);
+    historical.forEach((pool,i)=>{
+      let hits=0;for(const n of pool)if(selected.has(n))hits++;
+      if(hits>=3){matches3++;if(i<recentMatrix.rowCount)recent3++;}
+      if(hits>=4)matches4++;
+    });
+    const learning=round1(clamp(matches3/Math.max(1,rows.length)*100*6));
+    const replay=round1(clamp((matches3+matches4*2)/Math.max(1,rows.length)*100*5));
+    const recentRate=recent3/Math.max(1,recentMatrix.rowCount);
+    const longRate=matches3/Math.max(1,rows.length);
+    const flow=round1(clamp(longRate>0?50+50*(recentRate-longRate)/longRate:recentRate*100));
+    return {companion,pattern,trend,structure,learning,replay,flow};
+  }
+
+  function scoreCombo(nums,matrix,maxFrequency,maxPair,context){
     const frequencyValues=nums.map(n=>matrix.frequency[n]||0);
     const pairs=combinations(nums,2).map(([a,b])=>({a,b,count:pairCount(matrix,a,b)}));
     const pairValues=pairs.map(x=>x.count);
@@ -103,15 +137,12 @@
     const coverage=pairValues.length?clamp(pairValues.filter(v=>v>0).length/pairValues.length*100):0;
     const stabilityScore=round1(nodeBalance*.45+evenness*.35+coverage*.20);
 
-    const total=round1(
-      frequencyScore*WEIGHTS.frequency+
-      coOccurrenceScore*WEIGHTS.coOccurrence+
-      stabilityScore*WEIGHTS.stability
-    );
+    const components=scoreComponents(nums,matrix,context.rows,context.recentMatrix,maxFrequency,maxPair,context.maxRecent,context.historical);
+    const total=round1(Object.keys(WEIGHTS).reduce((sum,key)=>sum+components[key]*WEIGHTS[key],0));
 
     const strongestLinks=pairs.slice().sort((a,b)=>b.count-a.count||a.a-b.a||a.b-b.b).slice(0,5);
     return {
-      nums:nums.slice(),total,frequencyScore,coOccurrenceScore,stabilityScore,
+      nums:nums.slice(),total,frequencyScore,coOccurrenceScore,stabilityScore,components,
       raw:{
         avgFrequency:round1(average(frequencyValues)),
         minFrequency:Math.min(...frequencyValues),
@@ -127,7 +158,7 @@
 
   function sortScores(a,b){
     return b.total-a.total ||
-      b.coOccurrenceScore-a.coOccurrenceScore ||
+      b.components.companion-a.components.companion ||
       b.frequencyScore-a.frequencyScore ||
       b.stabilityScore-a.stabilityScore ||
       a.nums.join(',').localeCompare(b.nums.join(','));
@@ -153,8 +184,14 @@
     const maxPair=Math.max(0,...matrix.pairCounts.values());
     const candidateFrequencyOrder=nums.slice().sort((a,b)=>(matrix.frequency[b]||0)-(matrix.frequency[a]||0)||a-b);
 
+    const recentRows=rows.slice(0,Math.min(50,rows.length));
+    const recentMatrix=matrixFor(nums,recentRows,includeBonus);
+    recentMatrix.rowCount=recentRows.length;
+    const maxRecent=Math.max(0,...Object.values(recentMatrix.frequency));
+    const historical=rows.map(row=>rowPool(row,includeBonus));
+    const context={rows,recentMatrix,maxRecent,historical};
     const scored=combinations(nums,6)
-      .map(combo=>scoreCombo(combo,matrix,maxFrequency,maxPair))
+      .map(combo=>scoreCombo(combo,matrix,maxFrequency,maxPair,context))
       .sort(sortScores)
       .map((item,index)=>({...item,rank:index+1}));
 
